@@ -1,17 +1,9 @@
-
----
-
-## 📁 Folder 3: `Ticker Project/frontend/`
-
-### File: `index.html`
-
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NASDAQ Analysis AI — Phase 1</title>
+<title>NASDAQ Analysis AI — Phase 2</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
 <style>
   :root {
@@ -170,6 +162,12 @@
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+
+  .stat-meta {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    margin-top: 4px;
   }
 
   .card {
@@ -364,6 +362,37 @@
     color: var(--warning);
   }
 
+  .exchange-selector {
+    display: flex;
+    gap: 10px;
+    margin: 16px 0;
+    flex-wrap: wrap;
+  }
+
+  .exchange-chip {
+    padding: 8px 16px;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: var(--transition);
+    font-weight: 600;
+    user-select: none;
+  }
+
+  .exchange-chip:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .exchange-chip.selected {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+  }
+
   .progress-container {
     margin-top: 24px;
     padding: 20px;
@@ -457,7 +486,7 @@
     padding: 16px;
     font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
     font-size: 0.8rem;
-    max-height: 200px;
+    max-height: 240px;
     overflow-y: auto;
     margin-top: 16px;
     color: var(--text-muted);
@@ -566,11 +595,25 @@
     color: var(--warning);
   }
 
+  .load-date-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 100px;
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    color: var(--success);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
   @media (max-width: 768px) {
     .hero { padding: 40px 0; }
     .card { padding: 20px; }
     .api-item { flex-direction: column; align-items: flex-start; gap: 8px; }
     .settings-grid { grid-template-columns: 1fr; }
+    .exchange-selector { justify-content: center; }
   }
 
   ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -587,32 +630,36 @@
     <div class="logo">
       <div class="logo-icon">📈</div>
       <span>NASDAQ Analysis AI</span>
-      <span class="badge">Phase 1</span>
+      <span class="badge">Phase 2</span>
     </div>
     <button class="btn btn-secondary btn-sm" onclick="toggleSettings()">⚙️ Settings</button>
   </header>
 
   <section class="hero">
     <h1>Load the Market.<br>Analyze Everything.</h1>
-    <p>Free NASDAQ data. No API keys. Backend on Vercel · Frontend on GitHub Pages.</p>
+    <p>Free NASDAQ data. No API keys. Full universe fetch. Backend on Vercel · Frontend on GitHub Pages.</p>
   </section>
 
   <div class="stats-bar">
     <div class="stat-card">
       <div class="stat-value" id="stat-stocks">0</div>
       <div class="stat-label">Stocks Loaded</div>
+      <div class="stat-meta" id="meta-stocks">—</div>
     </div>
     <div class="stat-card">
       <div class="stat-value" id="stat-quotes">0</div>
       <div class="stat-label">Quotes Loaded</div>
+      <div class="stat-meta" id="meta-quotes">—</div>
     </div>
     <div class="stat-card">
       <div class="stat-value" id="stat-ipos">0</div>
       <div class="stat-label">IPOs Tracked</div>
+      <div class="stat-meta" id="meta-ipos">—</div>
     </div>
     <div class="stat-card">
       <div class="stat-value" id="stat-dividends">0</div>
       <div class="stat-label">Dividends</div>
+      <div class="stat-meta" id="meta-dividends">—</div>
     </div>
   </div>
 
@@ -643,7 +690,8 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title"><span class="icon">🗄️</span> Load Database</div>
-      <div style="display:flex;gap:8px;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <span class="load-date-badge" id="loadDateBadge">📅 Load Date: —</span>
         <button class="btn btn-secondary btn-sm" onclick="discoverAPIs()">🔍 Discover APIs</button>
         <button class="btn btn-primary" id="loadBtn" onclick="startLoading()">▶️ Load Data</button>
       </div>
@@ -658,6 +706,16 @@
     </div>
 
     <div class="api-list" id="apiList"></div>
+
+    <div style="margin-top:16px;">
+      <div style="font-size:0.85rem;font-weight:600;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em;">Exchange Filter (Screener Only)</div>
+      <div class="exchange-selector" id="exchangeSelector">
+        <div class="exchange-chip selected" data-exchange="nasdaq" onclick="selectExchange(this)">NASDAQ (4,121)</div>
+        <div class="exchange-chip" data-exchange="nyse" onclick="selectExchange(this)">NYSE (2,717)</div>
+        <div class="exchange-chip" data-exchange="amex" onclick="selectExchange(this)">AMEX (292)</div>
+        <div class="exchange-chip" data-exchange="" onclick="selectExchange(this)">ALL (7,131)</div>
+      </div>
+    </div>
 
     <div class="progress-container" id="progressContainer">
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
@@ -684,16 +742,16 @@
 
 <script>
 // ============================================================
-// NASDAQ Analysis AI — Phase 1 (Frontend / GitHub Pages)
-// Calls Vercel backend at /api/nasdaq-proxy
+// NASDAQ Analysis AI — Phase 2 (Frontend / GitHub Pages)
+// Full record fetch + load_date (US Eastern Time)
 // ============================================================
 
 const NASDAQ_ENDPOINTS = [
   {
     id: 'screener',
     name: 'Stock Screener',
-    path: '/api/screener/stocks?tableonly=true&limit=100&exchange=nasdaq',
-    description: 'List all NASDAQ stocks with price, change, market cap',
+    path: '/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq',
+    description: 'List all stocks with price, change, market cap — FULL UNIVERSE',
     table: 'nasdaq_stocks',
     status: 'active'
   },
@@ -701,7 +759,7 @@ const NASDAQ_ENDPOINTS = [
     id: 'quotes',
     name: 'Quote Info',
     path: '/api/quote/{symbol}/info?assetclass=stocks',
-    description: 'Detailed quote data for individual symbols (requires symbol list)',
+    description: 'Detailed quote data for top symbols by market cap (50 max)',
     table: 'nasdaq_quotes',
     status: 'active'
   },
@@ -711,7 +769,7 @@ const NASDAQ_ENDPOINTS = [
     path: '/api/ipo/calendar',
     description: 'Upcoming IPOs with pricing and dates',
     table: 'nasdaq_ipos',
-    status: 'pending'
+    status: 'active'
   },
   {
     id: 'dividends',
@@ -719,20 +777,52 @@ const NASDAQ_ENDPOINTS = [
     path: '/api/calendar/dividends',
     description: 'Dividend events with ex-dates and payment dates',
     table: 'nasdaq_dividends',
-    status: 'pending'
+    status: 'active'
   }
 ];
 
 let selectedAPIs = new Set(['screener']);
 let supabaseClient = null;
 let isLoading = false;
+let selectedExchange = 'nasdaq';
+
+// ============================================================
+// UTILITIES
+// ============================================================
+
+function getUSLoadDate() {
+  const now = new Date();
+  const usStr = now.toLocaleDateString('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const [m, d, y] = usStr.split('/');
+  return `${y}-${m}-${d}`;
+}
+
+function getUSLoadDateDisplay() {
+  return new Date().toLocaleDateString('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+}
 
 function log(msg, type = 'info') {
   const container = document.getElementById('logContainer');
-  const time = new Date().toLocaleTimeString();
+  const time = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/New_York' });
   const cls = type === 'success' ? 'log-success' : type === 'error' ? 'log-error' : type === 'warn' ? 'log-warn' : 'log-info';
   container.innerHTML += `<div class="log-entry"><span class="log-time">${time}</span><span class="${cls}">${msg}</span></div>`;
   container.scrollTop = container.scrollHeight;
+}
+
+function setProgress(pct, label) {
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressPercent').textContent = Math.round(pct) + '%';
+  if (label) document.getElementById('progressStatus').textContent = label;
 }
 
 function toggleSettings() {
@@ -745,6 +835,13 @@ function toggleAuto() {
 
 function isAutoLoad() {
   return document.getElementById('autoToggle').classList.contains('active');
+}
+
+function selectExchange(el) {
+  document.querySelectorAll('.exchange-chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedExchange = el.dataset.exchange;
+  log(`Exchange filter set to: ${selectedExchange || 'ALL'}`, 'success');
 }
 
 function discoverAPIs() {
@@ -826,7 +923,7 @@ async function fetchNasdaq(path) {
 }
 
 // ============================================================
-// Data Loading
+// Data Loading Orchestrator
 // ============================================================
 
 async function startLoading() {
@@ -853,6 +950,9 @@ async function startLoading() {
   const status = document.getElementById('progressStatus');
   const percent = document.getElementById('progressPercent');
   progress.classList.add('active');
+
+  // Show load date
+  document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
 
   const hasSupabase = initSupabase();
   if (!hasSupabase) {
@@ -916,108 +1016,196 @@ async function startLoading() {
 // ============================================================
 
 async function loadScreener() {
-  const json = await fetchNasdaq('/api/screener/stocks?tableonly=true&limit=100&exchange=nasdaq');
+  const exchangeParam = selectedExchange ? `&exchange=${selectedExchange}` : '';
+  const path = `/api/screener/stocks?tableonly=true&limit=5000${exchangeParam}`;
+  log(`Fetching screener: ${path}`);
+
+  const json = await fetchNasdaq(path);
   const rows = json.data?.table?.rows || [];
+  const totalRecords = json.data?.totalrecords || rows.length;
+
+  log(`Screener API returned ${rows.length} rows (totalrecords: ${totalRecords})`, 'success');
+
   return rows.map(r => ({
-    symbol: r.symbol,
-    name: r.name,
-    last_sale: r.lastsale,
-    net_change: r.netchange,
-    pct_change: r.pctchange,
-    market_cap: r.marketCap,
-    exchange: 'NASDAQ',
-    url: r.url
+    symbol: r.symbol || '',
+    name: r.name || '',
+    last_sale: r.lastsale || '',
+    net_change: r.netchange || '',
+    pct_change: r.pctchange || '',
+    market_cap: r.marketCap || '',
+    exchange: selectedExchange || 'ALL',
+    url: r.url || ''
   }));
 }
 
 async function loadQuotes() {
-  const screener = await fetchNasdaq('/api/screener/stocks?tableonly=true&limit=10&exchange=nasdaq');
+  // Fetch top symbols from screener (respecting exchange filter) for quote fetching
+  const exchangeParam = selectedExchange ? `&exchange=${selectedExchange}` : '';
+  const screener = await fetchNasdaq(`/api/screener/stocks?tableonly=true&limit=50${exchangeParam}`);
   const symbols = (screener.data?.table?.rows || []).map(r => r.symbol);
 
+  if (symbols.length === 0) {
+    log('No symbols found for quote fetching.', 'warn');
+    return [];
+  }
+
+  log(`Fetching quotes for top ${symbols.length} symbols...`);
   const quotes = [];
-  for (const sym of symbols) {
+
+  for (let i = 0; i < symbols.length; i++) {
+    const sym = symbols[i];
     try {
       const json = await fetchNasdaq(`/api/quote/${sym}/info?assetclass=stocks`);
       const d = json.data;
       if (!d) continue;
+      const pd = d.primaryData || {};
       quotes.push({
-        symbol: d.symbol,
-        company_name: d.companyName,
-        stock_type: d.stockType,
-        exchange: d.exchange,
-        is_nasdaq_listed: d.isNasdaqListed,
-        is_nasdaq_100: d.isNasdaq100,
-        last_sale_price: d.primaryData?.lastSalePrice,
-        net_change: d.primaryData?.netChange,
-        percentage_change: d.primaryData?.percentageChange,
-        delta_indicator: d.primaryData?.deltaIndicator,
-        last_trade_timestamp: d.primaryData?.lastTradeTimestamp,
-        volume: d.primaryData?.volume,
-        market_status: d.marketStatus,
-        asset_class: d.assetClass,
-        fifty_two_week_range: d.keyStats?.fiftyTwoWeekHighLow?.value,
-        day_range: d.keyStats?.dayrange?.value
+        symbol: d.symbol || sym,
+        company_name: d.companyName || '',
+        stock_type: d.stockType || '',
+        exchange: d.exchange || '',
+        last_sale_price: pd.lastSalePrice || '',
+        net_change: pd.netChange || '',
+        percentage_change: pd.percentageChange || '',
+        volume: pd.volume || '',
+        market_status: d.marketStatus || '',
+        asset_class: d.assetClass || ''
       });
     } catch (e) {
       log(`Quote fetch failed for ${sym}: ${e.message}`, 'error');
     }
+    setProgress(((i + 1) / symbols.length) * 100, `Quote ${i+1}/${symbols.length}: ${sym}`);
+    // Rate limit delay
+    if (i < symbols.length - 1) await new Promise(r => setTimeout(r, 250));
   }
+
   return quotes;
 }
 
 async function loadIPOs() {
   log('Fetching IPO calendar...', 'info');
-  try {
-    const json = await fetchNasdaq('/api/ipo/calendar');
-    return json.data || [];
-  } catch (e) {
-    log('IPO endpoint error: ' + e.message, 'error');
-    return [];
+  const json = await fetchNasdaq('/api/ipo/calendar');
+  const allRows = [];
+
+  const sections = ['priced', 'upcoming', 'filed', 'withdrawn'];
+  for (const section of sections) {
+    const secData = json.data?.[section];
+    if (!secData) continue;
+    let rows = [];
+    if (secData.rows) rows = secData.rows;
+    else if (secData.upcomingTable?.rows) rows = secData.upcomingTable.rows;
+
+    rows.forEach(r => {
+      allRows.push({
+        company_name: r.companyName || r.name || '',
+        symbol: r.symbol || '',
+        market: r.market || '',
+        price: r.price || r.proposedSharePrice || '',
+        shares: r.shares || r.proposedShares || '',
+        expected_date: r.expectedDate || r.pricedDate || null,
+        ipo_type: section,
+        status: section
+      });
+    });
   }
+
+  log(`IPO Calendar: ${allRows.length} records found`, 'success');
+  return allRows;
 }
 
 async function loadDividends() {
   log('Fetching dividend calendar...', 'info');
-  try {
-    const json = await fetchNasdaq('/api/calendar/dividends');
-    return json.data || [];
-  } catch (e) {
-    log('Dividend endpoint error: ' + e.message, 'error');
-    return [];
-  }
+  const json = await fetchNasdaq('/api/calendar/dividends');
+  const rows = json.data?.calendar?.rows || [];
+
+  const mapped = rows.map(r => ({
+    symbol: r.symbol || '',
+    company_name: r.companyName || r.name || '',
+    dividend_amount: r.dividendAmount || r.amount || '',
+    ex_div_date: r.exDate || r.exOrEffDate || null,
+    payment_date: r.paymentDate || null,
+    record_date: r.recordDate || null,
+    dividend_type: r.dividendType || r.type || ''
+  }));
+
+  log(`Dividend Calendar: ${mapped.length} records found`, 'success');
+  return mapped;
 }
 
 // ============================================================
-// Supabase Operations
+// Supabase Operations (with load_date)
 // ============================================================
 
 async function insertToSupabase(table, rows) {
   if (!supabaseClient || rows.length === 0) return;
-  try {
-    await supabaseClient.from(table).delete().neq('id', 0);
-    const batchSize = 50;
-    for (let i = 0; i < rows.length; i += batchSize) {
-      const batch = rows.slice(i, i + batchSize);
-      const { error } = await supabaseClient.from(table).insert(batch);
-      if (error) throw error;
+
+  const loadDate = getUSLoadDate();
+  const rowsWithDate = rows.map(r => ({ ...r, load_date: loadDate }));
+
+  // Tables that support upsert (have UNIQUE(symbol, load_date) constraint)
+  const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes'];
+  const useUpsert = upsertTables.includes(table);
+
+  const batchSize = 50;
+  let inserted = 0;
+
+  for (let i = 0; i < rowsWithDate.length; i += batchSize) {
+    const batch = rowsWithDate.slice(i, i + batchSize);
+    try {
+      let error;
+      if (useUpsert) {
+        ({ error } = await supabaseClient.from(table).upsert(batch, {
+          onConflict: 'symbol,load_date',
+          ignoreDuplicates: false
+        }));
+      } else {
+        ({ error } = await supabaseClient.from(table).insert(batch));
+      }
+      if (error) {
+        log(`Batch ${Math.floor(i/batchSize)+1} error: ${error.message}`, 'error');
+      } else {
+        inserted += batch.length;
+      }
+    } catch (e) {
+      log(`Batch ${Math.floor(i/batchSize)+1} exception: ${e.message}`, 'error');
     }
-    log(`Inserted ${rows.length} rows into ${table}`, 'success');
-  } catch (e) {
-    log(`Supabase insert failed for ${table}: ${e.message}`, 'error');
+    // Progress update during insert
+    const insertPct = ((i + batchSize) / rowsWithDate.length) * 100;
+    setProgress(insertPct, `Inserting ${table}... ${Math.min(i+batchSize, rowsWithDate.length)}/${rowsWithDate.length}`);
+    // Small delay between batches
+    if (i + batchSize < rowsWithDate.length) await new Promise(r => setTimeout(r, 100));
   }
+
+  log(`${useUpsert ? 'Upserted' : 'Inserted'} ${inserted} rows into ${table} (load_date: ${loadDate})`, 'success');
 }
 
 async function updateStats() {
   if (!supabaseClient) return;
-  const tables = ['nasdaq_stocks', 'nasdaq_quotes', 'nasdaq_ipos', 'nasdaq_dividends'];
-  const statIds = ['stat-stocks', 'stat-quotes', 'stat-ipos', 'stat-dividends'];
-  for (let i = 0; i < tables.length; i++) {
+  const tables = [
+    { name: 'nasdaq_stocks', statId: 'stat-stocks', metaId: 'meta-stocks' },
+    { name: 'nasdaq_quotes', statId: 'stat-quotes', metaId: 'meta-quotes' },
+    { name: 'nasdaq_ipos', statId: 'stat-ipos', metaId: 'meta-ipos' },
+    { name: 'nasdaq_dividends', statId: 'stat-dividends', metaId: 'meta-dividends' }
+  ];
+
+  const today = getUSLoadDate();
+
+  for (const t of tables) {
     try {
-      const { count, error } = await supabaseClient
-        .from(tables[i])
+      // Total count
+      const { count: totalCount, error: totalErr } = await supabaseClient
+        .from(t.name)
         .select('*', { count: 'exact', head: true });
-      if (!error) {
-        document.getElementById(statIds[i]).textContent = count || 0;
+      if (!totalErr) {
+        document.getElementById(t.statId).textContent = totalCount || 0;
+      }
+      // Today's count
+      const { count: todayCount, error: todayErr } = await supabaseClient
+        .from(t.name)
+        .select('*', { count: 'exact', head: true })
+        .eq('load_date', today);
+      if (!todayErr) {
+        document.getElementById(t.metaId).textContent = `${todayCount || 0} today`;
       }
     } catch (e) {}
   }
@@ -1038,7 +1226,7 @@ function showPreview(title, rows) {
   rows.forEach(row => {
     html += '<tr>';
     keys.forEach(k => {
-      const val = row[k] != null ? String(row[k]).substring(0, 50) : '';
+      const val = row[k] != null ? String(row[k]).substring(0, 60) : '';
       html += `<td>${val}</td>`;
     });
     html += '</tr>';
@@ -1058,8 +1246,9 @@ function clearPreview() {
 // ============================================================
 
 discoverAPIs();
-log('NASDAQ Analysis AI — Frontend initialized (GitHub Pages edition)');
-log('Deploy backend to Vercel, then paste its URL in Settings.');
+log('NASDAQ Analysis AI — Phase 2 initialized. Full record fetch enabled.', 'success');
+log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131', 'info');
+document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
 </script>
 
 </body>
