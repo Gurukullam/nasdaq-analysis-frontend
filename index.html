@@ -1011,12 +1011,10 @@ function discoverAPIs() {
       </span>
     ` : '';
 
-    // Add symbol + date range inputs for historical prices
+    // Add date range inputs for historical prices (ALL NASDAQ symbols)
     const historicalInputHtml = api.id === 'historical' ? `
       <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
-        <input type="text" id="hist-symbol" placeholder="SYMBOL" value="AAPL"
-          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase;"
-          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="color: #8b7355; font-size: 0.8rem;">From</span>
         <input type="date" id="hist-from" 
           style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 130px; font-size: 0.8rem; outline: none;"
           onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
@@ -1024,6 +1022,7 @@ function discoverAPIs() {
         <input type="date" id="hist-to"
           style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 130px; font-size: 0.8rem; outline: none;"
           onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="color: #8b7355; font-size: 0.75rem;">(ALL NASDAQ)</span>
       </span>
     ` : '';
 
@@ -1039,6 +1038,18 @@ function discoverAPIs() {
     `;
     list.appendChild(item);
   });
+  // Set default dates for historical inputs (30 days ago → today)
+  const histFrom = document.getElementById('hist-from');
+  const histTo = document.getElementById('hist-to');
+  if (histFrom && !histFrom.value) {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    histFrom.value = d.toISOString().split('T')[0];
+  }
+  if (histTo && !histTo.value) {
+    histTo.value = new Date().toISOString().split('T')[0];
+  }
+
   log('API discovery complete. 5 endpoints found.', 'success');
 }
 
@@ -1404,11 +1415,9 @@ async function loadDividends() {
 // ============================================================
 
 async function loadHistorical() {
-  const symbolInput = document.getElementById('hist-symbol');
   const fromInput = document.getElementById('hist-from');
   const toInput = document.getElementById('hist-to');
 
-  const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
   const fromDate = fromInput?.value;
   const toDate = toInput?.value;
 
@@ -1417,80 +1426,119 @@ async function loadHistorical() {
     return [];
   }
 
-  log(`Starting: Historical Prices for ${symbol} (${fromDate} to ${toDate})`);
-
-  const path = `/api/quote/${symbol}/historical?assetclass=stocks&fromdate=${fromDate}&todate=${toDate}&limit=5000`;
-
+  // Fetch ALL NASDAQ symbols from screener
+  log('Historical Prices: Fetching NASDAQ symbol list...');
+  let symbols = [];
   try {
-    const data = await fetchNasdaq(path);
-
-    let rows = [];
-    if (data?.data?.tradesTable?.rows) {
-      rows = data.data.tradesTable.rows;
-    } else if (data?.data?.historical?.rows) {
-      rows = data.data.historical.rows;
-    } else if (Array.isArray(data?.data)) {
-      rows = data.data;
-    }
-
-    log(`Historical Prices [${symbol}]: ${rows.length} records found`);
-
-    if (rows.length === 0) {
-      log('Historical Prices: No data returned', 'warn');
-      return [];
-    }
-
-    // Helper: convert M/D/YYYY or MM/DD/YYYY → YYYY-MM-DD
-    const toISODate = (val) => {
-      const s = (val || '').toString().trim();
-      if (!s) return null;
-      const parts = s.split('/');
-      if (parts.length === 3) {
-        const m = parts[0].padStart(2, '0');
-        const d = parts[1].padStart(2, '0');
-        const y = parts[2];
-        return `${y}-${m}-${d}`;
-      }
-      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-      return null;
-    };
-
-    const toNumber = (val) => {
-      if (val === null || val === undefined) return null;
-      const cleaned = val.toString().replace(/[$,]/g, '').trim();
-      const n = parseFloat(cleaned);
-      return isNaN(n) ? null : n;
-    };
-
-    const normalized = rows.map(row => {
-      // NASDAQ uses various field names; try common variants
-      const getField = (names) => {
-        for (const name of names) {
-          if (row[name] !== undefined && row[name] !== null && row[name] !== '') {
-            return row[name];
-          }
-        }
-        return null;
-      };
-
-      return {
-        symbol: symbol,
-        date: toISODate(getField(['date', 'tradingDate', 'tradeDate'])),
-        open: toNumber(getField(['open', 'openPrice', '$open'])),
-        high: toNumber(getField(['high', 'highPrice', '$high'])),
-        low: toNumber(getField(['low', 'lowPrice', '$low'])),
-        close: toNumber(getField(['close', 'closePrice', '$close', 'lastSale'])),
-        volume: toNumber(getField(['volume', 'shareVolume', '$volume', 'totalVolume']))
-      };
-    }).filter(r => r.date !== null);
-
-    log(`Historical Prices: ${normalized.length} valid rows after normalization`);
-    return normalized;
-
-  } catch (err) {
-    log(`Historical Prices failed: ${err.message}`, 'error');
+    const screenerData = await fetchNasdaq('/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq');
+    const rows = screenerData?.data?.table?.rows || [];
+    symbols = rows.map(r => r.symbol).filter(s => s);
+    log(`Historical Prices: ${symbols.length} NASDAQ symbols ready`);
+  } catch (e) {
+    log(`Historical Prices: Failed to fetch symbol list — ${e.message}`, 'error');
     return [];
   }
+
+  if (symbols.length === 0) {
+    log('Historical Prices: No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Historical Prices for ALL ${symbols.length} NASDAQ symbols (${fromDate} to ${toDate})`);
+
+  const toISODate = (val) => {
+    const s = (val || '').toString().trim();
+    if (!s) return null;
+    const parts = s.split('/');
+    if (parts.length === 3) {
+      const m = parts[0].padStart(2, '0');
+      const d = parts[1].padStart(2, '0');
+      const y = parts[2];
+      return `${y}-${m}-${d}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return null;
+  };
+
+  const toNumber = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? null : n;
+  };
+
+  const allRows = [];
+  let successCount = 0;
+  let failCount = 0;
+
+  for (let i = 0; i < symbols.length; i++) {
+    if (cancelRequested) {
+      log('Historical Prices: Cancelled by user', 'warn');
+      break;
+    }
+
+    const symbol = symbols[i];
+    const path = `/api/quote/${symbol}/historical?assetclass=stocks&fromdate=${fromDate}&todate=${toDate}&limit=5000`;
+
+    try {
+      const data = await fetchNasdaq(path);
+
+      let rows = [];
+      if (data?.data?.tradesTable?.rows) {
+        rows = data.data.tradesTable.rows;
+      } else if (data?.data?.historical?.rows) {
+        rows = data.data.historical.rows;
+      } else if (Array.isArray(data?.data)) {
+        rows = data.data;
+      }
+
+      if (rows.length > 0) {
+        const normalized = rows.map(row => {
+          const getField = (names) => {
+            for (const name of names) {
+              if (row[name] !== undefined && row[name] !== null && row[name] !== '') {
+                return row[name];
+              }
+            }
+            return null;
+          };
+
+          return {
+            symbol: symbol,
+            date: toISODate(getField(['date', 'tradingDate', 'tradeDate'])),
+            open: toNumber(getField(['open', 'openPrice', '$open'])),
+            high: toNumber(getField(['high', 'highPrice', '$high'])),
+            low: toNumber(getField(['low', 'lowPrice', '$low'])),
+            close: toNumber(getField(['close', 'closePrice', '$close', 'lastSale'])),
+            volume: toNumber(getField(['volume', 'shareVolume', '$volume', 'totalVolume']))
+          };
+        }).filter(r => r.date !== null);
+
+        allRows.push(...normalized);
+        successCount++;
+      }
+    } catch (err) {
+      failCount++;
+      if (failCount <= 3 || i === symbols.length - 1) {
+        log(`Historical Prices [${symbol}]: ${err.message}`, 'warn');
+      }
+    }
+
+    // Progress update every 10 symbols
+    if ((i + 1) % 10 === 0 || i === symbols.length - 1) {
+      const pct = Math.round(((i + 1) / symbols.length) * 100);
+      setProgress(pct, `Historical ${i + 1}/${symbols.length} symbols · ${allRows.length} rows`);
+      log(`Historical Prices: ${i + 1}/${symbols.length} symbols · ${allRows.length} total rows · ${failCount} failed`);
+    }
+
+    // 250ms delay between calls
+    if (i < symbols.length - 1) {
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }
+
+  log(`Historical Prices: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
 }
 
 // ============================================================
