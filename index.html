@@ -1040,7 +1040,7 @@ async function loadQuotes() {
 
   // Get symbols from already-loaded nasdaq_stocks for today
   let query = supabaseClient.from('nasdaq_stocks').select('symbol').eq('load_date', loadDate).order('market_cap', { ascending: false });
-  if (selectedExchange) query = query.eq('exchange', selectedExchange.toUpperCase());
+  if (selectedExchange) query = query.eq('exchange', selectedExchange);
   const { data: symbolRows, error } = await query;
   if (error || !symbolRows || symbolRows.length === 0) { log('No symbols found in nasdaq_stocks for today. Run Stock Screener first.', 'warn'); return []; }
 
