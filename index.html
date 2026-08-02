@@ -258,6 +258,11 @@
     font-size: 0.85rem;
   }
 
+  .btn-danger {
+    background: var(--error);
+    color: #fff;
+  }
+
   .input-group {
     display: flex;
     flex-direction: column;
@@ -362,32 +367,33 @@
     color: var(--warning);
   }
 
-  .exchange-selector {
+  .exchange-selector, .quote-count-selector {
     display: flex;
     gap: 10px;
-    margin: 16px 0;
+    margin: 12px 0;
     flex-wrap: wrap;
+    align-items: center;
   }
 
-  .exchange-chip {
+  .exchange-chip, .quote-count-chip {
     padding: 8px 16px;
     border-radius: 100px;
     border: 1px solid var(--border);
     background: var(--bg-elevated);
     color: var(--text-muted);
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     cursor: pointer;
     transition: var(--transition);
     font-weight: 600;
     user-select: none;
   }
 
-  .exchange-chip:hover {
+  .exchange-chip:hover, .quote-count-chip:hover {
     border-color: var(--accent);
     color: var(--text);
   }
 
-  .exchange-chip.selected {
+  .exchange-chip.selected, .quote-count-chip.selected {
     background: var(--accent);
     color: #000;
     border-color: var(--accent);
@@ -608,12 +614,27 @@
     font-weight: 600;
   }
 
+  .section-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .estimate-text {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
   @media (max-width: 768px) {
     .hero { padding: 40px 0; }
     .card { padding: 20px; }
     .api-item { flex-direction: column; align-items: flex-start; gap: 8px; }
     .settings-grid { grid-template-columns: 1fr; }
-    .exchange-selector { justify-content: center; }
+    .exchange-selector, .quote-count-selector { justify-content: center; }
   }
 
   ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -694,6 +715,7 @@
         <span class="load-date-badge" id="loadDateBadge">📅 Load Date: —</span>
         <button class="btn btn-secondary btn-sm" onclick="discoverAPIs()">🔍 Discover APIs</button>
         <button class="btn btn-primary" id="loadBtn" onclick="startLoading()">▶️ Load Data</button>
+        <button class="btn btn-danger" id="cancelBtn" onclick="cancelLoading()" style="display:none;">⏹ Cancel</button>
       </div>
     </div>
 
@@ -708,12 +730,29 @@
     <div class="api-list" id="apiList"></div>
 
     <div style="margin-top:16px;">
-      <div style="font-size:0.85rem;font-weight:600;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em;">Exchange Filter (Screener Only)</div>
+      <div class="section-label">Exchange Filter (Screener Only)</div>
       <div class="exchange-selector" id="exchangeSelector">
         <div class="exchange-chip selected" data-exchange="nasdaq" onclick="selectExchange(this)">NASDAQ (4,121)</div>
         <div class="exchange-chip" data-exchange="nyse" onclick="selectExchange(this)">NYSE (2,717)</div>
         <div class="exchange-chip" data-exchange="amex" onclick="selectExchange(this)">AMEX (292)</div>
         <div class="exchange-chip" data-exchange="" onclick="selectExchange(this)">ALL (7,131)</div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <div class="section-label">Quotes to Fetch (per-symbol API calls)</div>
+      <div class="quote-count-selector" id="quoteCountSelector">
+        <div class="quote-count-chip" data-count="50" onclick="selectQuoteCount(this)">Top 50</div>
+        <div class="quote-count-chip" data-count="100" onclick="selectQuoteCount(this)">Top 100</div>
+        <div class="quote-count-chip" data-count="200" onclick="selectQuoteCount(this)">Top 200</div>
+        <div class="quote-count-chip" data-count="500" onclick="selectQuoteCount(this)">Top 500</div>
+        <div class="quote-count-chip selected" data-count="ALL" onclick="selectQuoteCount(this)">ALL</div>
+      </div>
+      <div class="estimate-text" id="quoteEstimate">~4,121 symbols · 100ms delay · est. 7m 0s</div>
+      <div style="margin-top:6px;">
+        <label style="cursor:pointer;font-size:0.8rem;color:var(--text-dim);">
+          <input type="checkbox" id="resumeQuotes" checked style="accent-color:var(--accent);margin-right:6px;">Resume if interrupted (saves progress every 10 symbols)
+        </label>
       </div>
     </div>
 
@@ -743,48 +782,22 @@
 <script>
 // ============================================================
 // NASDAQ Analysis AI — Phase 2 (Frontend / GitHub Pages)
-// Full record fetch + load_date (US Eastern Time)
+// Full record fetch + load_date (US Eastern Time) + ALL quotes
 // ============================================================
 
 const NASDAQ_ENDPOINTS = [
-  {
-    id: 'screener',
-    name: 'Stock Screener',
-    path: '/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq',
-    description: 'List all stocks with price, change, market cap — FULL UNIVERSE',
-    table: 'nasdaq_stocks',
-    status: 'active'
-  },
-  {
-    id: 'quotes',
-    name: 'Quote Info',
-    path: '/api/quote/{symbol}/info?assetclass=stocks',
-    description: 'Detailed quote data for top symbols by market cap (50 max)',
-    table: 'nasdaq_quotes',
-    status: 'active'
-  },
-  {
-    id: 'ipos',
-    name: 'IPO Calendar',
-    path: '/api/ipo/calendar',
-    description: 'Upcoming IPOs with pricing and dates',
-    table: 'nasdaq_ipos',
-    status: 'active'
-  },
-  {
-    id: 'dividends',
-    name: 'Dividend Calendar',
-    path: '/api/calendar/dividends',
-    description: 'Dividend events with ex-dates and payment dates',
-    table: 'nasdaq_dividends',
-    status: 'active'
-  }
+  { id: 'screener', name: 'Stock Screener', path: '/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq', description: 'List all stocks with price, change, market cap — FULL UNIVERSE', table: 'nasdaq_stocks', status: 'active' },
+  { id: 'quotes', name: 'Quote Info', path: '/api/quote/{symbol}/info?assetclass=stocks', description: 'Detailed quote data for individual symbols', table: 'nasdaq_quotes', status: 'active' },
+  { id: 'ipos', name: 'IPO Calendar', path: '/api/ipo/calendar', description: 'Upcoming IPOs with pricing and dates', table: 'nasdaq_ipos', status: 'active' },
+  { id: 'dividends', name: 'Dividend Calendar', path: '/api/calendar/dividends', description: 'Dividend events with ex-dates and payment dates', table: 'nasdaq_dividends', status: 'active' }
 ];
 
 let selectedAPIs = new Set(['screener']);
 let supabaseClient = null;
 let isLoading = false;
+let cancelRequested = false;
 let selectedExchange = 'nasdaq';
+let quoteCount = 'ALL';
 
 // ============================================================
 // UTILITIES
@@ -792,23 +805,13 @@ let selectedExchange = 'nasdaq';
 
 function getUSLoadDate() {
   const now = new Date();
-  const usStr = now.toLocaleDateString('en-US', {
-    timeZone: 'America/New_York',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
+  const usStr = now.toLocaleDateString('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
   const [m, d, y] = usStr.split('/');
   return `${y}-${m}-${d}`;
 }
 
 function getUSLoadDateDisplay() {
-  return new Date().toLocaleDateString('en-US', {
-    timeZone: 'America/New_York',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
+  return new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function log(msg, type = 'info') {
@@ -825,23 +828,40 @@ function setProgress(pct, label) {
   if (label) document.getElementById('progressStatus').textContent = label;
 }
 
-function toggleSettings() {
-  document.getElementById('settingsPanel').classList.toggle('active');
-}
-
-function toggleAuto() {
-  document.getElementById('autoToggle').classList.toggle('active');
-}
-
-function isAutoLoad() {
-  return document.getElementById('autoToggle').classList.contains('active');
-}
+function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('active'); }
+function toggleAuto() { document.getElementById('autoToggle').classList.toggle('active'); }
+function isAutoLoad() { return document.getElementById('autoToggle').classList.contains('active'); }
 
 function selectExchange(el) {
   document.querySelectorAll('.exchange-chip').forEach(c => c.classList.remove('selected'));
   el.classList.add('selected');
   selectedExchange = el.dataset.exchange;
+  updateQuoteEstimate();
   log(`Exchange filter set to: ${selectedExchange || 'ALL'}`, 'success');
+}
+
+function selectQuoteCount(el) {
+  document.querySelectorAll('.quote-count-chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  quoteCount = el.dataset.count;
+  updateQuoteEstimate();
+}
+
+function updateQuoteEstimate() {
+  const counts = { nasdaq: 4121, nyse: 2717, amex: 292, '': 7131 };
+  const total = counts[selectedExchange] || 4121;
+  const count = quoteCount === 'ALL' ? total : parseInt(quoteCount);
+  const delayMs = quoteCount === 'ALL' ? 100 : 250;
+  const seconds = Math.round((count * delayMs) / 1000);
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  document.getElementById('quoteEstimate').textContent = `~${count} symbols · ${delayMs}ms delay · est. ${mins}m ${secs}s`;
+}
+
+function cancelLoading() {
+  cancelRequested = true;
+  log('Cancel requested. Finishing current operation...', 'warn');
+  document.getElementById('cancelBtn').style.display = 'none';
 }
 
 function discoverAPIs() {
@@ -867,35 +887,18 @@ function discoverAPIs() {
 }
 
 function toggleAPI(id, element) {
-  if (selectedAPIs.has(id)) {
-    selectedAPIs.delete(id);
-    element.classList.remove('selected');
-  } else {
-    selectedAPIs.add(id);
-    element.classList.add('selected');
-  }
+  if (selectedAPIs.has(id)) { selectedAPIs.delete(id); element.classList.remove('selected'); }
+  else { selectedAPIs.add(id); element.classList.add('selected'); }
 }
 
-function getBackendUrl() {
-  return document.getElementById('backendUrl').value.trim().replace(/\/$/, '');
-}
+function getBackendUrl() { return document.getElementById('backendUrl').value.trim().replace(/\/$/, ''); }
 
 function initSupabase() {
   const url = document.getElementById('sbUrl').value.trim();
   const key = document.getElementById('sbKey').value.trim();
-  if (!url || !key) {
-    log('Please configure Supabase URL and Anon Key in Settings', 'error');
-    document.getElementById('settingsPanel').classList.add('active');
-    return false;
-  }
-  try {
-    supabaseClient = supabase.createClient(url, key);
-    log('Supabase client initialized', 'success');
-    return true;
-  } catch (e) {
-    log('Failed to initialize Supabase: ' + e.message, 'error');
-    return false;
-  }
+  if (!url || !key) { log('Please configure Supabase URL and Anon Key in Settings', 'error'); document.getElementById('settingsPanel').classList.add('active'); return false; }
+  try { supabaseClient = supabase.createClient(url, key); log('Supabase client initialized', 'success'); return true; }
+  catch (e) { log('Failed to initialize Supabase: ' + e.message, 'error'); return false; }
 }
 
 // ============================================================
@@ -904,21 +907,9 @@ function initSupabase() {
 
 async function fetchNasdaq(path) {
   const backend = getBackendUrl();
-  if (!backend) {
-    throw new Error('Backend URL not configured. Open Settings and paste your Vercel URL.');
-  }
-
-  const res = await fetch(`${backend}/api/nasdaq-proxy`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path })
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${res.status}`);
-  }
-
+  if (!backend) throw new Error('Backend URL not configured. Open Settings and paste your Vercel URL.');
+  const res = await fetch(`${backend}/api/nasdaq-proxy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
+  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `HTTP ${res.status}`); }
   return res.json();
 }
 
@@ -928,39 +919,27 @@ async function fetchNasdaq(path) {
 
 async function startLoading() {
   if (isLoading) return;
-  if (selectedAPIs.size === 0) {
-    log('No APIs selected. Click Discover APIs first.', 'error');
-    return;
-  }
-
+  if (selectedAPIs.size === 0) { log('No APIs selected. Click Discover APIs first.', 'error'); return; }
   const backend = getBackendUrl();
-  if (!backend) {
-    log('Backend URL missing. Open Settings and paste your Vercel deployment URL.', 'error');
-    document.getElementById('settingsPanel').classList.add('active');
-    return;
-  }
+  if (!backend) { log('Backend URL missing. Open Settings and paste your Vercel deployment URL.', 'error'); document.getElementById('settingsPanel').classList.add('active'); return; }
 
   isLoading = true;
+  cancelRequested = false;
   const btn = document.getElementById('loadBtn');
+  const cancelBtn = document.getElementById('cancelBtn');
   btn.disabled = true;
   btn.textContent = '⏳ Loading...';
+  cancelBtn.style.display = 'inline-flex';
 
   const progress = document.getElementById('progressContainer');
   const fill = document.getElementById('progressFill');
   const status = document.getElementById('progressStatus');
   const percent = document.getElementById('progressPercent');
   progress.classList.add('active');
-
-  // Show load date
   document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
 
   const hasSupabase = initSupabase();
-  if (!hasSupabase) {
-    btn.disabled = false;
-    btn.textContent = '▶️ Load Data';
-    isLoading = false;
-    return;
-  }
+  if (!hasSupabase) { btn.disabled = false; btn.textContent = '▶️ Load Data'; cancelBtn.style.display = 'none'; isLoading = false; return; }
 
   const apis = Array.from(selectedAPIs);
   const total = apis.length;
@@ -969,21 +948,15 @@ async function startLoading() {
   for (const apiId of apis) {
     const api = NASDAQ_ENDPOINTS.find(a => a.id === apiId);
     if (!api) continue;
-
     status.textContent = `Loading ${api.name}...`;
     log(`Starting: ${api.name}`);
 
     try {
       let data;
-      if (api.id === 'screener') {
-        data = await loadScreener();
-      } else if (api.id === 'quotes') {
-        data = await loadQuotes();
-      } else if (api.id === 'ipos') {
-        data = await loadIPOs();
-      } else if (api.id === 'dividends') {
-        data = await loadDividends();
-      }
+      if (api.id === 'screener') data = await loadScreener();
+      else if (api.id === 'quotes') data = await loadQuotes();
+      else if (api.id === 'ipos') data = await loadIPOs();
+      else if (api.id === 'dividends') data = await loadDividends();
 
       if (data && data.length > 0) {
         log(`${api.name}: ${data.length} records fetched`, 'success');
@@ -1008,25 +981,27 @@ async function startLoading() {
 
   btn.disabled = false;
   btn.textContent = '▶️ Load Data';
+  cancelBtn.style.display = 'none';
   isLoading = false;
 }
 
 // ============================================================
-// NASDAQ Fetchers (via Vercel backend)
+// NASDAQ Fetchers
 // ============================================================
 
 async function loadScreener() {
+  const loadDate = getUSLoadDate();
+  log(`Starting Stock Screener load (Exchange: ${selectedExchange || 'ALL'}, Load Date: ${getUSLoadDateDisplay()})`);
+  setProgress(5, 'Fetching stock screener...');
+
   const exchangeParam = selectedExchange ? `&exchange=${selectedExchange}` : '';
-  const path = `/api/screener/stocks?tableonly=true&limit=5000${exchangeParam}`;
-  log(`Fetching screener: ${path}`);
-
-  const json = await fetchNasdaq(path);
-  const rows = json.data?.table?.rows || [];
-  const totalRecords = json.data?.totalrecords || rows.length;
-
+  const data = await fetchNasdaq(`/api/screener/stocks?tableonly=true&limit=5000${exchangeParam}`);
+  const totalRecords = data?.data?.totalrecords || 0;
+  const rows = data?.data?.table?.rows || [];
   log(`Screener API returned ${rows.length} rows (totalrecords: ${totalRecords})`, 'success');
+  if (rows.length === 0) { log('No stock data returned', 'err'); return []; }
 
-  return rows.map(r => ({
+  const mapped = rows.map(r => ({
     symbol: r.symbol || '',
     name: r.name || '',
     last_sale: r.lastsale || '',
@@ -1036,29 +1011,60 @@ async function loadScreener() {
     exchange: selectedExchange || 'ALL',
     url: r.url || ''
   }));
+
+  setProgress(20, `Preparing ${mapped.length} stocks for insert...`);
+  return mapped;
 }
 
 async function loadQuotes() {
-  // Fetch top symbols from screener (respecting exchange filter) for quote fetching
-  const exchangeParam = selectedExchange ? `&exchange=${selectedExchange}` : '';
-  const screener = await fetchNasdaq(`/api/screener/stocks?tableonly=true&limit=50${exchangeParam}`);
-  const symbols = (screener.data?.table?.rows || []).map(r => r.symbol);
+  const loadDate = getUSLoadDate();
+  log(`Starting Quote Info load (Load Date: ${getUSLoadDateDisplay()})`);
+  setProgress(5, 'Fetching quotes...');
 
-  if (symbols.length === 0) {
-    log('No symbols found for quote fetching.', 'warn');
-    return [];
+  if (!supabaseClient) { log('Supabase not initialized', 'err'); return []; }
+
+  const resumeKey = `quote_resume_${loadDate}_${selectedExchange}`;
+  const resumeEnabled = document.getElementById('resumeQuotes').checked;
+  let resumeIndex = 0;
+
+  if (resumeEnabled) {
+    const saved = localStorage.getItem(resumeKey);
+    if (saved) {
+      const data = JSON.parse(saved);
+      if (data.exchange === selectedExchange && data.loadDate === loadDate) {
+        resumeIndex = data.index || 0;
+        if (resumeIndex > 0) log(`Resuming quotes from symbol #${resumeIndex + 1}...`, 'info');
+      }
+    }
   }
 
-  log(`Fetching quotes for top ${symbols.length} symbols...`);
+  // Get symbols from already-loaded nasdaq_stocks for today
+  let query = supabaseClient.from('nasdaq_stocks').select('symbol').eq('load_date', loadDate).order('market_cap', { ascending: false });
+  if (selectedExchange) query = query.eq('exchange', selectedExchange.toUpperCase());
+  const { data: symbolRows, error } = await query;
+  if (error || !symbolRows || symbolRows.length === 0) { log('No symbols found in nasdaq_stocks for today. Run Stock Screener first.', 'warn'); return []; }
+
+  let symbols = symbolRows.map(r => r.symbol);
+  const totalAvailable = symbols.length;
+  if (quoteCount !== 'ALL') symbols = symbols.slice(0, parseInt(quoteCount));
+  if (resumeIndex > 0 && resumeIndex < symbols.length) symbols = symbols.slice(resumeIndex);
+  else resumeIndex = 0;
+
+  log(`Fetching quotes for ${symbols.length} symbols (total: ${totalAvailable}, start: #${resumeIndex + 1})...`);
   const quotes = [];
+  const delayMs = quoteCount === 'ALL' ? 100 : 250;
+  const startTime = Date.now();
 
   for (let i = 0; i < symbols.length; i++) {
-    const sym = symbols[i];
-    let success = false;
-    let retries = 0;
-    const maxRetries = 3;
+    if (cancelRequested) {
+      log(`Cancel received. Saved progress at symbol #${resumeIndex + i + 1}.`, 'warn');
+      if (resumeEnabled) localStorage.setItem(resumeKey, JSON.stringify({ exchange: selectedExchange, loadDate, index: resumeIndex + i }));
+      break;
+    }
 
-    while (!success && retries < maxRetries) {
+    const sym = symbols[i];
+    let success = false, retries = 0;
+    while (!success && retries < 3) {
       try {
         const json = await fetchNasdaq(`/api/quote/${sym}/info?assetclass=stocks`);
         const d = json.data;
@@ -1086,20 +1092,24 @@ async function loadQuotes() {
         success = true;
       } catch (e) {
         retries++;
-        if (retries < maxRetries) {
-          log(`Quote fetch failed for ${sym} (attempt ${retries}/${maxRetries}): ${e.message}. Retrying...`, 'warn');
-          await new Promise(r => setTimeout(r, 500 * retries)); // Exponential backoff
-        } else {
-          log(`Quote fetch failed for ${sym} after ${maxRetries} attempts: ${e.message}`, 'error');
-        }
+        if (retries < 3) { log(`Quote fetch failed for ${sym} (attempt ${retries}/3): ${e.message}. Retrying...`, 'warn'); await new Promise(r => setTimeout(r, 500 * retries)); }
+        else { log(`Quote fetch failed for ${sym} after 3 attempts: ${e.message}`, 'error'); }
       }
     }
 
-    setProgress(((i + 1) / symbols.length) * 100, `Quote ${i+1}/${symbols.length}: ${sym}`);
-    // Rate limit delay between symbols
-    if (i < symbols.length - 1) await new Promise(r => setTimeout(r, 250));
+    const overallIndex = resumeIndex + i + 1;
+    const pct = Math.round((overallIndex / totalAvailable) * 100);
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    const rate = elapsed > 0 ? (overallIndex / elapsed).toFixed(1) : 0;
+    setProgress(pct, `Quote ${overallIndex}/${totalAvailable}: ${sym} · ${rate}/s`);
+
+    if (resumeEnabled && (i + 1) % 10 === 0) {
+      localStorage.setItem(resumeKey, JSON.stringify({ exchange: selectedExchange, loadDate, index: overallIndex }));
+    }
+    if (i < symbols.length - 1 && !cancelRequested) await new Promise(r => setTimeout(r, delayMs));
   }
 
+  if (!cancelRequested && resumeEnabled) { localStorage.removeItem(resumeKey); log('Quote loading complete. Resume progress cleared.', 'success'); }
   return quotes;
 }
 
@@ -1107,7 +1117,6 @@ async function loadIPOs() {
   log('Fetching IPO calendar...', 'info');
   const json = await fetchNasdaq('/api/ipo/calendar');
   const allRows = [];
-
   const sections = ['priced', 'upcoming', 'filed', 'withdrawn'];
   for (const section of sections) {
     const secData = json.data?.[section];
@@ -1115,7 +1124,6 @@ async function loadIPOs() {
     let rows = [];
     if (secData.rows) rows = secData.rows;
     else if (secData.upcomingTable?.rows) rows = secData.upcomingTable.rows;
-
     rows.forEach(r => {
       allRows.push({
         company_name: r.companyName || r.name || '',
@@ -1129,7 +1137,6 @@ async function loadIPOs() {
       });
     });
   }
-
   log(`IPO Calendar: ${allRows.length} records found`, 'success');
   return allRows;
 }
@@ -1138,7 +1145,6 @@ async function loadDividends() {
   log('Fetching dividend calendar...', 'info');
   const json = await fetchNasdaq('/api/calendar/dividends');
   const rows = json.data?.calendar?.rows || [];
-
   const mapped = rows.map(r => ({
     symbol: r.symbol || '',
     company_name: r.companyName || r.name || '',
@@ -1148,7 +1154,6 @@ async function loadDividends() {
     record_date: r.recordDate || null,
     dividend_type: r.dividendType || r.type || ''
   }));
-
   log(`Dividend Calendar: ${mapped.length} records found`, 'success');
   return mapped;
 }
@@ -1159,14 +1164,10 @@ async function loadDividends() {
 
 async function insertToSupabase(table, rows) {
   if (!supabaseClient || rows.length === 0) return;
-
   const loadDate = getUSLoadDate();
   const rowsWithDate = rows.map(r => ({ ...r, load_date: loadDate }));
-
-  // Tables that support upsert (have UNIQUE(symbol, load_date) constraint)
   const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes'];
   const useUpsert = upsertTables.includes(table);
-
   const batchSize = 50;
   let inserted = 0;
 
@@ -1175,21 +1176,16 @@ async function insertToSupabase(table, rows) {
     try {
       let error;
       if (useUpsert) {
-        ({ error } = await supabaseClient.from(table).upsert(batch, {
-          onConflict: 'symbol,load_date',
-          ignoreDuplicates: false
-        }));
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
       } else {
         ({ error } = await supabaseClient.from(table).insert(batch));
       }
       if (error) {
         log(`Batch ${Math.floor(i/batchSize)+1} error: ${error.message}`, 'error');
-        // DEBUG: Log the first row of the failing batch to identify the problematic field
         if (batch.length > 0) {
           const firstRow = batch[0];
           const fieldLengths = Object.entries(firstRow).map(([k, v]) => `${k}=${String(v).length}`).join(', ');
           log(`DEBUG first row field lengths: ${fieldLengths}`, 'warn');
-          log(`DEBUG first row: ${JSON.stringify(firstRow).substring(0, 300)}`, 'warn');
         }
       } else {
         inserted += batch.length;
@@ -1197,13 +1193,9 @@ async function insertToSupabase(table, rows) {
     } catch (e) {
       log(`Batch ${Math.floor(i/batchSize)+1} exception: ${e.message}`, 'error');
     }
-    // Progress update during insert
-    const insertPct = ((i + batchSize) / rowsWithDate.length) * 100;
-    setProgress(insertPct, `Inserting ${table}... ${Math.min(i+batchSize, rowsWithDate.length)}/${rowsWithDate.length}`);
-    // Small delay between batches
+    setProgress(((i + batchSize) / rowsWithDate.length) * 100, `Inserting ${table}... ${Math.min(i+batchSize, rowsWithDate.length)}/${rowsWithDate.length}`);
     if (i + batchSize < rowsWithDate.length) await new Promise(r => setTimeout(r, 100));
   }
-
   log(`${useUpsert ? 'Upserted' : 'Inserted'} ${inserted} rows into ${table} (load_date: ${loadDate})`, 'success');
 }
 
@@ -1215,26 +1207,13 @@ async function updateStats() {
     { name: 'nasdaq_ipos', statId: 'stat-ipos', metaId: 'meta-ipos' },
     { name: 'nasdaq_dividends', statId: 'stat-dividends', metaId: 'meta-dividends' }
   ];
-
   const today = getUSLoadDate();
-
   for (const t of tables) {
     try {
-      // Total count
-      const { count: totalCount, error: totalErr } = await supabaseClient
-        .from(t.name)
-        .select('*', { count: 'exact', head: true });
-      if (!totalErr) {
-        document.getElementById(t.statId).textContent = totalCount || 0;
-      }
-      // Today's count
-      const { count: todayCount, error: todayErr } = await supabaseClient
-        .from(t.name)
-        .select('*', { count: 'exact', head: true })
-        .eq('load_date', today);
-      if (!todayErr) {
-        document.getElementById(t.metaId).textContent = `${todayCount || 0} today`;
-      }
+      const { count: totalCount } = await supabaseClient.from(t.name).select('*', { count: 'exact', head: true });
+      if (totalCount != null) document.getElementById(t.statId).textContent = totalCount;
+      const { count: todayCount } = await supabaseClient.from(t.name).select('*', { count: 'exact', head: true }).eq('load_date', today);
+      if (todayCount != null) document.getElementById(t.metaId).textContent = `${todayCount} today`;
     } catch (e) {}
   }
 }
@@ -1253,10 +1232,7 @@ function showPreview(title, rows) {
   html += '</tr></thead><tbody>';
   rows.forEach(row => {
     html += '<tr>';
-    keys.forEach(k => {
-      const val = row[k] != null ? String(row[k]).substring(0, 60) : '';
-      html += `<td>${val}</td>`;
-    });
+    keys.forEach(k => { const val = row[k] != null ? String(row[k]).substring(0, 60) : ''; html += `<td>${val}</td>`; });
     html += '</tr>';
   });
   html += '</tbody></table>';
@@ -1274,9 +1250,10 @@ function clearPreview() {
 // ============================================================
 
 discoverAPIs();
+updateQuoteEstimate();
+document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
 log('NASDAQ Analysis AI — Phase 2 initialized. Full record fetch enabled.', 'success');
 log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131', 'info');
-document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
 </script>
 
 </body>
