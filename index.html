@@ -1059,6 +1059,7 @@ async function loadQuotes() {
       const d = json.data;
       if (!d) continue;
       const pd = d.primaryData || {};
+      const ks = d.keyStats || {};
       quotes.push({
         symbol: d.symbol || sym,
         company_name: d.companyName || '',
@@ -1069,7 +1070,11 @@ async function loadQuotes() {
         percentage_change: pd.percentageChange || '',
         volume: pd.volume || '',
         market_status: d.marketStatus || '',
-        asset_class: d.assetClass || ''
+        asset_class: d.assetClass || '',
+        delta_indicator: pd.deltaIndicator || '',
+        last_trade_timestamp: pd.lastTradeTimestamp || '',
+        fifty_two_week_range: ks.fiftyTwoWeekHighLow?.value || '',
+        day_range: ks.dayrange?.value || ''
       });
     } catch (e) {
       log(`Quote fetch failed for ${sym}: ${e.message}`, 'error');
