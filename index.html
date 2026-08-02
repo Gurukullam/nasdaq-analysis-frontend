@@ -1163,6 +1163,13 @@ async function insertToSupabase(table, rows) {
       }
       if (error) {
         log(`Batch ${Math.floor(i/batchSize)+1} error: ${error.message}`, 'error');
+        // DEBUG: Log the first row of the failing batch to identify the problematic field
+        if (batch.length > 0) {
+          const firstRow = batch[0];
+          const fieldLengths = Object.entries(firstRow).map(([k, v]) => `${k}=${String(v).length}`).join(', ');
+          log(`DEBUG first row field lengths: ${fieldLengths}`, 'warn');
+          log(`DEBUG first row: ${JSON.stringify(firstRow).substring(0, 300)}`, 'warn');
+        }
       } else {
         inserted += batch.length;
       }
