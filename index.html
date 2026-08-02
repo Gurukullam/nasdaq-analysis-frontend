@@ -909,7 +909,8 @@ const NASDAQ_ENDPOINTS = [
   { id: 'screener', name: 'Stock Screener', path: '/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq', description: 'List all stocks with price, change, market cap — FULL UNIVERSE', table: 'nasdaq_stocks', status: 'active' },
   { id: 'quotes', name: 'Quote Info', path: '/api/quote/{symbol}/info?assetclass=stocks', description: 'Detailed quote data for individual symbols', table: 'nasdaq_quotes', status: 'active' },
   { id: 'ipos', name: 'IPO Calendar', path: '/api/ipo/calendar', description: 'Upcoming IPOs with pricing and dates', table: 'nasdaq_ipos', status: 'active' },
-  { id: 'dividends', name: 'Dividend Calendar', path: '/api/calendar/dividends', description: 'Dividend events with ex-dates and payment dates', table: 'nasdaq_dividends', status: 'active' }
+  { id: 'dividends', name: 'Dividend Calendar', path: '/api/calendar/dividends', description: 'Dividend events with ex-dates and payment dates', table: 'nasdaq_dividends', status: 'active' },
+  { id: 'historical', name: 'Historical Prices', path: '/api/quote/{symbol}/historical', description: 'Daily OHLCV price history for a symbol', table: 'nasdaq_historical', status: 'active' }
 ];
 
 let selectedAPIs = new Set(['screener']);
@@ -1010,11 +1011,27 @@ function discoverAPIs() {
       </span>
     ` : '';
 
+    // Add symbol + date range inputs for historical prices
+    const historicalInputHtml = api.id === 'historical' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="hist-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase;"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <input type="date" id="hist-from" 
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 130px; font-size: 0.8rem; outline: none;"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="color: #8b7355; font-size: 0.8rem;">to</span>
+        <input type="date" id="hist-to"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 130px; font-size: 0.8rem; outline: none;"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+      </span>
+    ` : '';
+
     item.innerHTML = `
       <div class="api-info">
         <span class="api-method">GET</span>
         <div>
-          <div class="api-name">${api.name}${daysInputHtml}</div>
+          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}</div>
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
@@ -1022,7 +1039,7 @@ function discoverAPIs() {
     `;
     list.appendChild(item);
   });
-  log('API discovery complete. 4 endpoints found.', 'success');
+  log('API discovery complete. 5 endpoints found.', 'success');
 }
 
 function toggleAPI(id, element) {
@@ -1096,6 +1113,7 @@ async function startLoading() {
       else if (api.id === 'quotes') data = await loadQuotes();
       else if (api.id === 'ipos') data = await loadIPOs();
       else if (api.id === 'dividends') data = await loadDividends();
+      else if (api.id === 'historical') data = await loadHistorical();
 
       if (data && data.length > 0) {
         log(`${api.name}: ${data.length} records fetched`, 'success');
@@ -1380,6 +1398,88 @@ async function loadDividends() {
 
   return normalized;
 }
+
+// ============================================================
+// Historical Prices Loader
+// ============================================================
+
+async function loadHistorical() {
+  const symbolInput = document.getElementById('hist-symbol');
+  const fromInput = document.getElementById('hist-from');
+  const toInput = document.getElementById('hist-to');
+
+  const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+  const fromDate = fromInput?.value;
+  const toDate = toInput?.value;
+
+  if (!fromDate || !toDate) {
+    log('Historical Prices: Please select both From and To dates.', 'error');
+    return [];
+  }
+
+  log(`Starting: Historical Prices for ${symbol} (${fromDate} to ${toDate})`);
+
+  const path = `/api/quote/${symbol}/historical?assetclass=stocks&fromdate=${fromDate}&todate=${toDate}&limit=5000`;
+
+  try {
+    const data = await fetchNasdaq(path);
+
+    let rows = [];
+    if (data?.data?.tradesTable?.rows) {
+      rows = data.data.tradesTable.rows;
+    } else if (data?.data?.historical?.rows) {
+      rows = data.data.historical.rows;
+    } else if (Array.isArray(data?.data)) {
+      rows = data.data;
+    }
+
+    log(`Historical Prices [${symbol}]: ${rows.length} records found`);
+
+    if (rows.length === 0) {
+      log('Historical Prices: No data returned', 'warn');
+      return [];
+    }
+
+    // Helper: convert M/D/YYYY or MM/DD/YYYY → YYYY-MM-DD
+    const toISODate = (val) => {
+      const s = (val || '').toString().trim();
+      if (!s) return null;
+      const parts = s.split('/');
+      if (parts.length === 3) {
+        const m = parts[0].padStart(2, '0');
+        const d = parts[1].padStart(2, '0');
+        const y = parts[2];
+        return `${y}-${m}-${d}`;
+      }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      return null;
+    };
+
+    const toNumber = (val) => {
+      if (val === null || val === undefined) return null;
+      const n = parseFloat(val.toString().replace(/,/g, ''));
+      return isNaN(n) ? null : n;
+    };
+
+    const normalized = rows.map(row => ({
+      symbol: symbol,
+      date: toISODate(row.date),
+      open: toNumber(row.open),
+      high: toNumber(row.high),
+      low: toNumber(row.low),
+      close: toNumber(row.close),
+      volume: toNumber(row.volume)
+    })).filter(r => r.date !== null);
+
+    log(`Historical Prices: ${normalized.length} valid rows after normalization`);
+    return normalized;
+
+  } catch (err) {
+    log(`Historical Prices failed: ${err.message}`, 'error');
+    return [];
+  }
+}
+
 // ============================================================
 // Supabase Operations (with load_date)
 // ============================================================
@@ -1390,7 +1490,8 @@ async function insertToSupabase(table, rows) {
   const rowsWithDate = rows.map(r => ({ ...r, load_date: loadDate }));
   const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes'];
   const upsertDividends = table === 'nasdaq_dividends';
-  const useUpsert = upsertTables.includes(table) || upsertDividends;
+  const upsertHistorical = table === 'nasdaq_historical';
+  const useUpsert = upsertTables.includes(table) || upsertDividends || upsertHistorical;
   const batchSize = 50;
   let inserted = 0;
 
@@ -1400,6 +1501,8 @@ async function insertToSupabase(table, rows) {
       let error;
       if (upsertDividends) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,ex_date', ignoreDuplicates: false }));
+      } else if (upsertHistorical) {
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,date', ignoreDuplicates: false }));
       } else if (useUpsert) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
       } else {
@@ -1430,7 +1533,8 @@ async function updateStats() {
     { name: 'nasdaq_stocks', statId: 'stat-stocks', metaId: 'meta-stocks' },
     { name: 'nasdaq_quotes', statId: 'stat-quotes', metaId: 'meta-quotes' },
     { name: 'nasdaq_ipos', statId: 'stat-ipos', metaId: 'meta-ipos' },
-    { name: 'nasdaq_dividends', statId: 'stat-dividends', metaId: 'meta-dividends' }
+    { name: 'nasdaq_dividends', statId: 'stat-dividends', metaId: 'meta-dividends' },
+    { name: 'nasdaq_historical', statId: 'stat-historical', metaId: 'meta-historical' }
   ];
   const today = getUSLoadDate();
   for (const t of tables) {
@@ -1517,7 +1621,7 @@ discoverAPIs();
 updateQuoteEstimate();
 document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
 log('NASDAQ Analysis AI — Phase 2 initialized. Full record fetch enabled.', 'success');
-log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131', 'info');
+log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131 | Historical: new', 'info');
 </script>
 
 </body>
