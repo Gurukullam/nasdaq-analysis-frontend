@@ -871,11 +871,30 @@ function discoverAPIs() {
     const item = document.createElement('div');
     item.className = `api-item ${selectedAPIs.has(api.id) ? 'selected' : ''}`;
     item.onclick = () => toggleAPI(api.id, item);
+    
+    // Add days input for dividend calendar
+    const daysInputHtml = api.id === 'dividends' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px;" onclick="event.stopPropagation()">
+        <label for="dividend-days" style="color: #888; font-size: 0.8rem;">Range:</label>
+        <input 
+          type="number" 
+          id="dividend-days" 
+          value="7" 
+          min="1" 
+          max="90"
+          style="background: #1a1a1a; color: #00d4ff; border: 1px solid #333; border-radius: 4px; padding: 3px 6px; width: 48px; font-size: 0.85rem; text-align: center; outline: none;"
+          onfocus="this.style.borderColor='#00d4ff'"
+          onblur="this.style.borderColor='#333'"
+        >
+        <span style="color: #666; font-size: 0.8rem;">days</span>
+      </span>
+    ` : '';
+    
     item.innerHTML = `
       <div class="api-info">
         <span class="api-method">GET</span>
         <div>
-          <div class="api-name">${api.name}</div>
+          <div class="api-name">${api.name}${daysInputHtml}</div>
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
@@ -1142,20 +1161,79 @@ async function loadIPOs() {
 }
 
 async function loadDividends() {
-  log('Fetching dividend calendar...', 'info');
-  const json = await fetchNasdaq('/api/calendar/dividends');
-  const rows = json.data?.calendar?.rows || [];
-  const mapped = rows.map(r => ({
-    symbol: r.symbol || '',
-    company_name: r.companyName || r.name || '',
-    dividend_amount: r.dividendAmount || r.amount || '',
-    ex_div_date: r.exDate || r.exOrEffDate || null,
-    payment_date: r.paymentDate || null,
-    record_date: r.recordDate || null,
-    dividend_type: r.dividendType || r.type || ''
+  const daysInput = document.getElementById('dividend-days');
+  const daysBack = daysInput ? Math.min(Math.max(parseInt(daysInput.value, 10) || 7, 1), 90) : 7;
+  
+  const allRows = [];
+  let totalFetched = 0;
+  
+  log(`Starting: Dividend Calendar (${daysBack} day${daysBack > 1 ? 's' : ''})`);
+  
+  for (let i = 0; i < daysBack; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+    
+    log(`Fetching dividend calendar for ${dateStr}...`);
+    
+    try {
+      const data = await fetchNasdaq(`/api/calendar/dividends?date=${dateStr}`);
+      
+      let rows = [];
+      if (data?.data?.rows) {
+        rows = data.data.rows;
+      } else if (data?.data?.calendar?.rows) {
+        rows = data.data.calendar.rows;
+      } else if (data?.data?.dividends?.rows) {
+        rows = data.data.dividends.rows;
+      } else if (Array.isArray(data?.data)) {
+        rows = data.data;
+      }
+      
+      log(`Dividend Calendar [${dateStr}]: ${rows.length} records found`);
+      allRows.push(...rows);
+      totalFetched += rows.length;
+      
+      if (i < daysBack - 1) {
+        await new Promise(r => setTimeout(r, 250));
+      }
+      
+    } catch (err) {
+      log(`Dividend Calendar [${dateStr}]: Error — ${err.message}`);
+    }
+  }
+  
+  log(`Dividend Calendar: ${totalFetched} raw records fetched`);
+  
+  if (allRows.length === 0) {
+    log('Dividend Calendar: No data returned across all dates');
+    return [];
+  }
+  
+  const seen = new Set();
+  const uniqueRows = allRows.filter(row => {
+    const symbol = (row.symbol || row.stock || row.ticker || '').toString().trim();
+    const exDate = (row.exDate || row.ex_date || row.exOrEffDate || row.date || '').toString().trim();
+    const key = `${symbol}-${exDate}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  
+  log(`Dividend Calendar: ${uniqueRows.length} unique records after dedup`);
+  
+  const normalized = uniqueRows.map(row => ({
+    symbol: (row.symbol || row.stock || row.ticker || '').toString().trim(),
+    company_name: (row.companyName || row.company_name || row.name || '').toString().trim(),
+    dividend_type: (row.dividendType || row.dividend_type || row.type || '').toString().trim(),
+    amount: (row.amount || row.cashAmount || row.dividendAmount || row.rate || '').toString().trim(),
+    ex_date: (row.exDate || row.ex_date || row.exOrEffDate || '').toString().trim(),
+    record_date: (row.recordDate || row.record_date || '').toString().trim(),
+    payment_date: (row.paymentDate || row.payment_date || '').toString().trim(),
+    declaration_date: (row.declarationDate || row.declaration_date || '').toString().trim()
   }));
-  log(`Dividend Calendar: ${mapped.length} records found`, 'success');
-  return mapped;
+  
+  return normalized;
 }
 
 // ============================================================
