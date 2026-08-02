@@ -1457,19 +1457,32 @@ async function loadHistorical() {
 
     const toNumber = (val) => {
       if (val === null || val === undefined) return null;
-      const n = parseFloat(val.toString().replace(/,/g, ''));
+      const cleaned = val.toString().replace(/[$,]/g, '').trim();
+      const n = parseFloat(cleaned);
       return isNaN(n) ? null : n;
     };
 
-    const normalized = rows.map(row => ({
-      symbol: symbol,
-      date: toISODate(row.date),
-      open: toNumber(row.open),
-      high: toNumber(row.high),
-      low: toNumber(row.low),
-      close: toNumber(row.close),
-      volume: toNumber(row.volume)
-    })).filter(r => r.date !== null);
+    const normalized = rows.map(row => {
+      // NASDAQ uses various field names; try common variants
+      const getField = (names) => {
+        for (const name of names) {
+          if (row[name] !== undefined && row[name] !== null && row[name] !== '') {
+            return row[name];
+          }
+        }
+        return null;
+      };
+
+      return {
+        symbol: symbol,
+        date: toISODate(getField(['date', 'tradingDate', 'tradeDate'])),
+        open: toNumber(getField(['open', 'openPrice', '$open'])),
+        high: toNumber(getField(['high', 'highPrice', '$high'])),
+        low: toNumber(getField(['low', 'lowPrice', '$low'])),
+        close: toNumber(getField(['close', 'closePrice', '$close', 'lastSale'])),
+        volume: toNumber(getField(['volume', 'shareVolume', '$volume', 'totalVolume']))
+      };
+    }).filter(r => r.date !== null);
 
     log(`Historical Prices: ${normalized.length} valid rows after normalization`);
     return normalized;
