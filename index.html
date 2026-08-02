@@ -1054,33 +1054,49 @@ async function loadQuotes() {
 
   for (let i = 0; i < symbols.length; i++) {
     const sym = symbols[i];
-    try {
-      const json = await fetchNasdaq(`/api/quote/${sym}/info?assetclass=stocks`);
-      const d = json.data;
-      if (!d) continue;
-      const pd = d.primaryData || {};
-      const ks = d.keyStats || {};
-      quotes.push({
-        symbol: d.symbol || sym,
-        company_name: d.companyName || '',
-        stock_type: d.stockType || '',
-        exchange: d.exchange || '',
-        last_sale_price: pd.lastSalePrice || '',
-        net_change: pd.netChange || '',
-        percentage_change: pd.percentageChange || '',
-        volume: pd.volume || '',
-        market_status: d.marketStatus || '',
-        asset_class: d.assetClass || '',
-        delta_indicator: pd.deltaIndicator || '',
-        last_trade_timestamp: pd.lastTradeTimestamp || '',
-        fifty_two_week_range: ks.fiftyTwoWeekHighLow?.value || '',
-        day_range: ks.dayrange?.value || ''
-      });
-    } catch (e) {
-      log(`Quote fetch failed for ${sym}: ${e.message}`, 'error');
+    let success = false;
+    let retries = 0;
+    const maxRetries = 3;
+
+    while (!success && retries < maxRetries) {
+      try {
+        const json = await fetchNasdaq(`/api/quote/${sym}/info?assetclass=stocks`);
+        const d = json.data;
+        if (!d) { success = true; continue; }
+        const pd = d.primaryData || {};
+        const ks = d.keyStats || {};
+        quotes.push({
+          symbol: d.symbol || sym,
+          company_name: d.companyName || '',
+          stock_type: d.stockType || '',
+          exchange: d.exchange || '',
+          is_nasdaq_listed: d.isNasdaqListed === 'True' || d.isNasdaqListed === true,
+          is_nasdaq_100: d.isNasdaq100 === 'True' || d.isNasdaq100 === true,
+          last_sale_price: pd.lastSalePrice || '',
+          net_change: pd.netChange || '',
+          percentage_change: pd.percentageChange || '',
+          volume: pd.volume || '',
+          market_status: d.marketStatus || '',
+          asset_class: d.assetClass || '',
+          delta_indicator: pd.deltaIndicator || '',
+          last_trade_timestamp: pd.lastTradeTimestamp || '',
+          fifty_two_week_range: ks.fiftyTwoWeekHighLow?.value || '',
+          day_range: ks.dayrange?.value || ''
+        });
+        success = true;
+      } catch (e) {
+        retries++;
+        if (retries < maxRetries) {
+          log(`Quote fetch failed for ${sym} (attempt ${retries}/${maxRetries}): ${e.message}. Retrying...`, 'warn');
+          await new Promise(r => setTimeout(r, 500 * retries)); // Exponential backoff
+        } else {
+          log(`Quote fetch failed for ${sym} after ${maxRetries} attempts: ${e.message}`, 'error');
+        }
+      }
     }
+
     setProgress(((i + 1) / symbols.length) * 100, `Quote ${i+1}/${symbols.length}: ${sym}`);
-    // Rate limit delay
+    // Rate limit delay between symbols
     if (i < symbols.length - 1) await new Promise(r => setTimeout(r, 250));
   }
 
