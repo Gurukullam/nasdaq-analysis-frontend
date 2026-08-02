@@ -1250,8 +1250,8 @@ async function loadDividends() {
   const normalized = uniqueRows.map(row => ({
     symbol: toValue(row.symbol),
     company_name: toValue(row.companyName),
-    dividend_type: null, // NASDAQ free API does not return this field
-    amount: toValue(row.dividend_Rate),
+    dividend_type: 'Cash', // NASDAQ free API does not return this field; default to Cash
+    dividend_amount: toValue(row.dividend_Rate),
     ex_date: toISODate(row.dividend_Ex_Date),
     record_date: toISODate(row.record_Date),
     payment_date: toISODate(row.payment_Date),
@@ -1269,7 +1269,8 @@ async function insertToSupabase(table, rows) {
   const loadDate = getUSLoadDate();
   const rowsWithDate = rows.map(r => ({ ...r, load_date: loadDate }));
   const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes'];
-  const useUpsert = upsertTables.includes(table);
+  const upsertDividends = table === 'nasdaq_dividends';
+  const useUpsert = upsertTables.includes(table) || upsertDividends;
   const batchSize = 50;
   let inserted = 0;
 
@@ -1277,7 +1278,9 @@ async function insertToSupabase(table, rows) {
     const batch = rowsWithDate.slice(i, i + batchSize);
     try {
       let error;
-      if (useUpsert) {
+      if (upsertDividends) {
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,ex_date', ignoreDuplicates: false }));
+      } else if (useUpsert) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
       } else {
         ({ error } = await supabaseClient.from(table).insert(batch));
