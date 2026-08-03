@@ -1670,7 +1670,7 @@ async function loadFinancials() {
           rows.push({
             symbol: symbol,
             period_ending: period.date,
-            metric_name: metricName.trim(),
+            line_item: metricName.trim(),
             metric_value: cleanedValue
           });
         }
@@ -1802,7 +1802,7 @@ async function insertToSupabase(table, rows) {
       } else if (upsertHistorical) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,date', ignoreDuplicates: false }));
       } else if (isFinancial) {
-        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,period_ending,metric_name', ignoreDuplicates: false }));
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,period_ending,line_item', ignoreDuplicates: false }));
       } else if (useUpsert) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
       } else {
