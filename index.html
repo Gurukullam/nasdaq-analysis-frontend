@@ -910,7 +910,8 @@ const NASDAQ_ENDPOINTS = [
   { id: 'quotes', name: 'Quote Info', path: '/api/quote/{symbol}/info?assetclass=stocks', description: 'Detailed quote data for individual symbols', table: 'nasdaq_quotes', status: 'active' },
   { id: 'ipos', name: 'IPO Calendar', path: '/api/ipo/calendar', description: 'Upcoming IPOs with pricing and dates', table: 'nasdaq_ipos', status: 'active' },
   { id: 'dividends', name: 'Dividend Calendar', path: '/api/calendar/dividends', description: 'Dividend events with ex-dates and payment dates', table: 'nasdaq_dividends', status: 'active' },
-  { id: 'historical', name: 'Historical Prices', path: '/api/quote/{symbol}/historical', description: 'Daily OHLCV price history for a symbol', table: 'nasdaq_historical', status: 'active' }
+  { id: 'historical', name: 'Historical Prices', path: '/api/quote/{symbol}/historical', description: 'Daily OHLCV price history for a symbol', table: 'nasdaq_historical', status: 'active' },
+  { id: 'financials', name: 'Yearly Financials', path: '/api/company/{symbol}/financials?frequency=1', description: 'Income Statement, Balance Sheet, Cash Flow, and Financial Ratios (annual)', table: 'yearly_income_statement', status: 'active' }
 ];
 
 let selectedAPIs = new Set(['screener']);
@@ -920,6 +921,7 @@ let cancelRequested = false;
 let selectedExchange = 'nasdaq';
 let quoteCount = 'ALL';
 let historicalMode = 'all';  // 'all' or 'single'
+let financialMode = 'single';  // 'all' or 'single'
 
 // ============================================================
 // UTILITIES
@@ -987,6 +989,13 @@ function selectHistoricalMode(el) {
   log(`Historical mode: ${historicalMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
 }
 
+function selectFinancialMode(el) {
+  financialMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Financials mode: ${financialMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
 function cancelLoading() {
   cancelRequested = true;
   log('Cancel requested. Finishing current operation...', 'warn');
@@ -1020,6 +1029,18 @@ function discoverAPIs() {
     ` : '';
 
     // Add date range + mode inputs for historical prices
+    // Add symbol input + mode toggle for yearly financials
+    const financialInputHtml = api.id === 'financials' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="fin-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${financialMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="fin-mode-chip ${financialMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectFinancialMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${financialMode === 'all' ? '#d4af37' : '#fff'};color:${financialMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="fin-mode-chip ${financialMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectFinancialMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${financialMode === 'single' ? '#d4af37' : '#fff'};color:${financialMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
     const historicalInputHtml = api.id === 'historical' ? `
       <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
         <span style="color: #8b7355; font-size: 0.8rem;">From</span>
@@ -1044,7 +1065,7 @@ function discoverAPIs() {
       <div class="api-info">
         <span class="api-method">GET</span>
         <div>
-          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}</div>
+          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}</div>
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
@@ -1139,8 +1160,21 @@ async function startLoading() {
       else if (api.id === 'ipos') data = await loadIPOs();
       else if (api.id === 'dividends') data = await loadDividends();
       else if (api.id === 'historical') data = await loadHistorical();
+      else if (api.id === 'financials') data = await loadFinancials();
 
-      if (data && data.length > 0) {
+      if (api.id === 'financials' && data && data.income_statement) {
+        const totalRows = data.income_statement.length + data.balance_sheet.length + data.cash_flow.length + data.financial_ratios.length;
+        if (totalRows > 0) {
+          log(`${api.name}: ${totalRows} total records fetched`, 'success');
+          showPreview('Income Statement', data.income_statement.slice(0, 10));
+          await insertToSupabase('yearly_income_statement', data.income_statement);
+          await insertToSupabase('yearly_balance_sheet', data.balance_sheet);
+          await insertToSupabase('yearly_cash_flow', data.cash_flow);
+          await insertToSupabase('yearly_financial_ratios', data.financial_ratios);
+        } else {
+          log(`${api.name}: No data returned`, 'warn');
+        }
+      } else if (data && data.length > 0) {
         log(`${api.name}: ${data.length} records fetched`, 'success');
         showPreview(api.name, data.slice(0, 10));
         await insertToSupabase(api.table, data);
@@ -1574,6 +1608,174 @@ async function loadHistorical() {
   return allRows;
 }
 
+
+// ============================================================
+// Yearly Financials Loader (Income Statement, Balance Sheet, Cash Flow, Ratios)
+// ============================================================
+
+async function loadFinancials() {
+  const toISODate = (val) => {
+    const s = (val || '').toString().trim();
+    if (!s) return null;
+    const parts = s.split('/');
+    if (parts.length === 3) {
+      const m = parts[0].padStart(2, '0');
+      const d = parts[1].padStart(2, '0');
+      const y = parts[2];
+      return `${y}-${m}-${d}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return null;
+  };
+
+  const cleanValue = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().trim();
+    if (s === '' || s === '--') return null;
+    return s.replace(/[$,]/g, '');
+  };
+
+  const parseTable = (tableData, symbol) => {
+    const rows = [];
+    if (!tableData || !tableData.rows || !tableData.headers) return rows;
+    const headers = tableData.headers;
+    const periods = [];
+    for (let i = 2; i <= 5; i++) {
+      const key = `value${i}`;
+      if (headers[key]) {
+        const isoDate = toISODate(headers[key]);
+        if (isoDate) periods.push({ col: key, date: isoDate });
+      }
+    }
+    if (periods.length === 0) return rows;
+
+    tableData.rows.forEach(row => {
+      const metricName = row.value1;
+      if (!metricName || metricName.trim() === '') return;
+      // Skip section headers that have no data values
+      const sectionHeaders = ['Ratios', 'Assets', 'Liabilities', 'Equity', 'Activities', 'Items'];
+      const isSectionHeader = sectionHeaders.some(suffix => metricName.trim().endsWith(suffix));
+      if (isSectionHeader) {
+        const hasData = periods.some(p => {
+          const v = row[p.col];
+          return v !== undefined && v !== null && v.toString().trim() !== '' && v.toString().trim() !== '--';
+        });
+        if (!hasData) return;
+      }
+
+      periods.forEach(period => {
+        const rawValue = row[period.col];
+        const cleanedValue = cleanValue(rawValue);
+        if (cleanedValue !== null) {
+          rows.push({
+            symbol: symbol,
+            period_ending: period.date,
+            metric_name: metricName.trim(),
+            metric_value: cleanedValue
+          });
+        }
+      });
+    });
+    return rows;
+  };
+
+  const fetchSymbolFinancials = async (symbol) => {
+    const path = `/api/company/${symbol}/financials?frequency=1`;
+    const data = await fetchNasdaq(path);
+    const d = data?.data;
+    if (!d) return { income_statement: [], balance_sheet: [], cash_flow: [], financial_ratios: [] };
+
+    return {
+      income_statement: parseTable(d.incomeStatementTable, symbol),
+      balance_sheet: parseTable(d.balanceSheetTable, symbol),
+      cash_flow: parseTable(d.cashFlowTable, symbol),
+      financial_ratios: parseTable(d.financialRatiosTable, symbol)
+    };
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (financialMode === 'single') {
+    const symbolInput = document.getElementById('fin-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Yearly Financials for ${symbol}`);
+    try {
+      const result = await fetchSymbolFinancials(symbol);
+      const totalRows = result.income_statement.length + result.balance_sheet.length + result.cash_flow.length + result.financial_ratios.length;
+      log(`Financials [${symbol}]: ${totalRows} records fetched (IS:${result.income_statement.length} BS:${result.balance_sheet.length} CF:${result.cash_flow.length} FR:${result.financial_ratios.length})`, 'success');
+      return result;
+    } catch (err) {
+      log(`Financials [${symbol}]: ${err.message}`, 'error');
+      return { income_statement: [], balance_sheet: [], cash_flow: [], financial_ratios: [] };
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  log('Financials: Fetching NASDAQ symbol list...');
+  let symbols = [];
+  try {
+    const screenerData = await fetchNasdaq('/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq');
+    const rows = screenerData?.data?.table?.rows || [];
+    symbols = rows.map(r => r.symbol).filter(s => s);
+    log(`Financials: ${symbols.length} NASDAQ symbols ready`);
+  } catch (e) {
+    log(`Financials: Failed to fetch symbol list — ${e.message}`, 'error');
+    return { income_statement: [], balance_sheet: [], cash_flow: [], financial_ratios: [] };
+  }
+
+  if (symbols.length === 0) {
+    log('Financials: No symbols found', 'warn');
+    return { income_statement: [], balance_sheet: [], cash_flow: [], financial_ratios: [] };
+  }
+
+  log(`Starting: Yearly Financials for ALL ${symbols.length} NASDAQ symbols`);
+
+  const result = {
+    income_statement: [],
+    balance_sheet: [],
+    cash_flow: [],
+    financial_ratios: []
+  };
+  let successCount = 0;
+  let failCount = 0;
+
+  for (let i = 0; i < symbols.length; i++) {
+    if (cancelRequested) {
+      log('Financials: Cancelled by user', 'warn');
+      break;
+    }
+
+    const symbol = symbols[i];
+    try {
+      const data = await fetchSymbolFinancials(symbol);
+      result.income_statement.push(...data.income_statement);
+      result.balance_sheet.push(...data.balance_sheet);
+      result.cash_flow.push(...data.cash_flow);
+      result.financial_ratios.push(...data.financial_ratios);
+      if (data.income_statement.length > 0 || data.balance_sheet.length > 0) successCount++;
+    } catch (err) {
+      failCount++;
+      if (failCount <= 3 || i === symbols.length - 1) {
+        log(`Financials [${symbol}]: ${err.message}`, 'warn');
+      }
+    }
+
+    if ((i + 1) % 10 === 0 || i === symbols.length - 1) {
+      const pct = Math.round(((i + 1) / symbols.length) * 100);
+      const totalRows = result.income_statement.length + result.balance_sheet.length + result.cash_flow.length + result.financial_ratios.length;
+      setProgress(pct, `Financials ${i + 1}/${symbols.length} symbols · ${totalRows} rows`);
+      log(`Financials: ${i + 1}/${symbols.length} symbols · ${totalRows} total rows · ${failCount} failed`);
+    }
+
+    if (i < symbols.length - 1) {
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }
+
+  const totalRows = result.income_statement.length + result.balance_sheet.length + result.cash_flow.length + result.financial_ratios.length;
+  log(`Financials: ${totalRows} rows from ${successCount} symbols (${failCount} failed)`);
+  return result;
+}
+
 // ============================================================
 // Supabase Operations (with load_date)
 // ============================================================
@@ -1585,7 +1787,9 @@ async function insertToSupabase(table, rows) {
   const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes'];
   const upsertDividends = table === 'nasdaq_dividends';
   const upsertHistorical = table === 'nasdaq_historical';
-  const useUpsert = upsertTables.includes(table) || upsertDividends || upsertHistorical;
+  const financialTables = ['yearly_income_statement', 'yearly_balance_sheet', 'yearly_cash_flow', 'yearly_financial_ratios'];
+  const isFinancial = financialTables.includes(table);
+  const useUpsert = upsertTables.includes(table) || upsertDividends || upsertHistorical || isFinancial;
   const batchSize = 50;
   let inserted = 0;
 
@@ -1597,6 +1801,8 @@ async function insertToSupabase(table, rows) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,ex_date', ignoreDuplicates: false }));
       } else if (upsertHistorical) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,date', ignoreDuplicates: false }));
+      } else if (isFinancial) {
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,period_ending,metric_name', ignoreDuplicates: false }));
       } else if (useUpsert) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
       } else {
@@ -1628,7 +1834,11 @@ async function updateStats() {
     { name: 'nasdaq_quotes', statId: 'stat-quotes', metaId: 'meta-quotes' },
     { name: 'nasdaq_ipos', statId: 'stat-ipos', metaId: 'meta-ipos' },
     { name: 'nasdaq_dividends', statId: 'stat-dividends', metaId: 'meta-dividends' },
-    { name: 'nasdaq_historical', statId: 'stat-historical', metaId: 'meta-historical' }
+    { name: 'nasdaq_historical', statId: 'stat-historical', metaId: 'meta-historical' },
+    { name: 'yearly_income_statement', statId: 'stat-income', metaId: 'meta-income' },
+    { name: 'yearly_balance_sheet', statId: 'stat-balance', metaId: 'meta-balance' },
+    { name: 'yearly_cash_flow', statId: 'stat-cashflow', metaId: 'meta-cashflow' },
+    { name: 'yearly_financial_ratios', statId: 'stat-ratios', metaId: 'meta-ratios' }
   ];
   const today = getUSLoadDate();
   for (const t of tables) {
@@ -1715,7 +1925,7 @@ discoverAPIs();
 updateQuoteEstimate();
 document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
 log('NASDAQ Analysis AI — Phase 2 initialized. Full record fetch enabled.', 'success');
-log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131 | Historical: new', 'info');
+log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131 | Historical: new | Financials: new', 'info');
 </script>
 
 </body>
