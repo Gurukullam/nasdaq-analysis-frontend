@@ -1188,10 +1188,13 @@ async function startLoading() {
         if (totalRows > 0) {
           log(`${api.name}: ${totalRows} total records fetched`, 'success');
           showPreview('Income Statement', data.income_statement.slice(0, 10));
-          await insertToSupabase('yearly_income_statement', data.income_statement);
-          await insertToSupabase('yearly_balance_sheet', data.balance_sheet);
-          await insertToSupabase('yearly_cash_flow', data.cash_flow);
-          await insertToSupabase('yearly_financial_ratios', data.financial_ratios);
+          // Insert all 4 yearly tables in parallel (independent upserts)
+          await Promise.all([
+            insertToSupabase('yearly_income_statement', data.income_statement),
+            insertToSupabase('yearly_balance_sheet', data.balance_sheet),
+            insertToSupabase('yearly_cash_flow', data.cash_flow),
+            insertToSupabase('yearly_financial_ratios', data.financial_ratios)
+          ]);
         } else {
           log(`${api.name}: No data returned`, 'warn');
         }
@@ -1200,10 +1203,13 @@ async function startLoading() {
         if (totalRows > 0) {
           log(`${api.name}: ${totalRows} total records fetched`, 'success');
           showPreview('Quarterly Income Statement', data.income_statement.slice(0, 10));
-          await insertToSupabase('quarterly_income_statement', data.income_statement);
-          await insertToSupabase('quarterly_balance_sheet', data.balance_sheet);
-          await insertToSupabase('quarterly_cash_flow', data.cash_flow);
-          await insertToSupabase('quarterly_financial_ratios', data.financial_ratios);
+          // Insert all 4 quarterly tables in parallel (independent upserts)
+          await Promise.all([
+            insertToSupabase('quarterly_income_statement', data.income_statement),
+            insertToSupabase('quarterly_balance_sheet', data.balance_sheet),
+            insertToSupabase('quarterly_cash_flow', data.cash_flow),
+            insertToSupabase('quarterly_financial_ratios', data.financial_ratios)
+          ]);
         } else {
           log(`${api.name}: No data returned`, 'warn');
         }
@@ -1982,18 +1988,34 @@ async function loadQuarterlyFinancials() {
 async function insertToSupabase(table, rows) {
   if (!supabaseClient || rows.length === 0) return;
   const loadDate = getUSLoadDate();
-  const rowsWithDate = rows.map(r => ({ ...r, load_date: loadDate }));
+  // Mutate in-place to avoid creating millions of new objects (saves memory + GC pressure)
+  rows.forEach(r => r.load_date = loadDate);
+  const rowsWithDate = rows;
+
   const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes'];
   const upsertDividends = table === 'nasdaq_dividends';
   const upsertHistorical = table === 'nasdaq_historical';
   const financialTables = ['yearly_income_statement', 'yearly_balance_sheet', 'yearly_cash_flow', 'yearly_financial_ratios', 'quarterly_income_statement', 'quarterly_balance_sheet', 'quarterly_cash_flow', 'quarterly_financial_ratios'];
   const isFinancial = financialTables.includes(table);
   const useUpsert = upsertTables.includes(table) || upsertDividends || upsertHistorical || isFinancial;
-  const batchSize = 50;
-  let inserted = 0;
 
-  for (let i = 0; i < rowsWithDate.length; i += batchSize) {
-    const batch = rowsWithDate.slice(i, i + batchSize);
+  // Financial data = millions of rows → bigger batches + parallel concurrency
+  const batchSize = isFinancial ? 1500 : 500;
+  const concurrency = isFinancial ? 10 : 5;
+  const total = rowsWithDate.length;
+  let inserted = 0;
+  let failed = 0;
+
+  log(`${useUpsert ? 'Upserting' : 'Inserting'} ${total.toLocaleString()} rows into ${table} (batch: ${batchSize}, concurrency: ${concurrency})...`);
+
+  // Build all batches up-front
+  const batches = [];
+  for (let i = 0; i < total; i += batchSize) {
+    batches.push(rowsWithDate.slice(i, i + batchSize));
+  }
+
+  // Process one batch
+  const processBatch = async (batch, batchIndex) => {
     try {
       let error;
       if (upsertDividends) {
@@ -2007,23 +2029,61 @@ async function insertToSupabase(table, rows) {
       } else {
         ({ error } = await supabaseClient.from(table).insert(batch));
       }
+
       if (error) {
-        log(`Batch ${Math.floor(i/batchSize)+1} error: ${error.message}`, 'error');
-        if (batch.length > 0) {
-          const firstRow = batch[0];
-          const fieldLengths = Object.entries(firstRow).map(([k, v]) => `${k}=${String(v).length}`).join(', ');
-          log(`DEBUG first row field lengths: ${fieldLengths}`, 'warn');
+        // If the whole batch fails, try row-by-row fallback for this batch to salvage what we can
+        if (batch.length > 1 && (error.message.includes('violates') || error.message.includes('conflict') || error.message.includes('duplicate'))) {
+          let batchInserted = 0;
+          for (const row of batch) {
+            try {
+              let rowError;
+              if (upsertDividends) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,ex_date', ignoreDuplicates: false }));
+              } else if (upsertHistorical) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,date', ignoreDuplicates: false }));
+              } else if (isFinancial) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,period_ending,line_item', ignoreDuplicates: false }));
+              } else if (useUpsert) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
+              } else {
+                ({ error: rowError } = await supabaseClient.from(table).insert([row]));
+              }
+              if (!rowError) batchInserted++;
+            } catch (e2) { /* ignore single-row errors */ }
+          }
+          inserted += batchInserted;
+          failed += (batch.length - batchInserted);
+        } else {
+          log(`Batch ${batchIndex + 1} error: ${error.message}`, 'error');
+          failed += batch.length;
         }
       } else {
         inserted += batch.length;
       }
     } catch (e) {
-      log(`Batch ${Math.floor(i/batchSize)+1} exception: ${e.message}`, 'error');
+      log(`Batch ${batchIndex + 1} exception: ${e.message}`, 'error');
+      failed += batch.length;
     }
-    setProgress(((i + batchSize) / rowsWithDate.length) * 100, `Inserting ${table}... ${Math.min(i+batchSize, rowsWithDate.length)}/${rowsWithDate.length}`);
-    if (i + batchSize < rowsWithDate.length) await new Promise(r => setTimeout(r, 100));
+  };
+
+  // Process batches with concurrency limit (sliding window)
+  let batchIndex = 0;
+  const progressEvery = Math.max(1, Math.floor(batches.length / 20)); // ~5% increments
+
+  while (batchIndex < batches.length) {
+    const chunk = batches.slice(batchIndex, batchIndex + concurrency);
+    await Promise.all(chunk.map((batch, i) => processBatch(batch, batchIndex + i)));
+    batchIndex += concurrency;
+
+    // Throttle progress updates to reduce DOM thrashing
+    if (batchIndex % (concurrency * Math.max(1, Math.floor(progressEvery / concurrency))) === 0 || batchIndex >= batches.length) {
+      const pct = Math.min(100, Math.round((inserted / total) * 100));
+      setProgress(pct, `Inserting ${table}... ${inserted.toLocaleString()}/${total.toLocaleString()}`);
+    }
   }
-  log(`${useUpsert ? 'Upserted' : 'Inserted'} ${inserted} rows into ${table} (load_date: ${loadDate})`, 'success');
+
+  const status = failed > 0 ? 'warn' : 'success';
+  log(`${useUpsert ? 'Upserted' : 'Inserted'} ${inserted.toLocaleString()} rows into ${table}${failed > 0 ? ' (' + failed + ' failed)' : ''} · load_date: ${loadDate}`, status);
 }
 
 async function updateStats() {
