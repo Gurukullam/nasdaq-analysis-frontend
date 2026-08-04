@@ -924,6 +924,7 @@ let quoteCount = 'ALL';
 let historicalMode = 'all';  // 'all' or 'single'
 let financialMode = 'single';  // 'all' or 'single'
 let quarterlyMode = 'single';  // 'all' or 'single'
+let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
 
 // ============================================================
 // UTILITIES
@@ -1127,12 +1128,88 @@ function initSupabase() {
 // Vercel Backend Proxy
 // ============================================================
 
-async function fetchNasdaq(path) {
+async function fetchNasdaq(path, timeoutMs = 20000) {
   const backend = getBackendUrl();
   if (!backend) throw new Error('Backend URL not configured. Open Settings and paste your Vercel URL.');
-  const res = await fetch(`${backend}/api/nasdaq-proxy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
-  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `HTTP ${res.status}`); }
-  return res.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${backend}/api/nasdaq-proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `HTTP ${res.status}`); }
+    return res.json();
+  } catch (e) {
+    clearTimeout(timeout);
+    if (e.name === 'AbortError') throw new Error(`Request timeout after ${timeoutMs}ms for ${path}`);
+    throw e;
+  }
+}
+
+async function getScreenerSymbols() {
+  if (screenerSymbolsCache) return screenerSymbolsCache;
+  log('Fetching NASDAQ symbol list...');
+  const data = await fetchNasdaq('/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq');
+  const rows = data?.data?.table?.rows || [];
+  screenerSymbolsCache = rows.map(r => r.symbol).filter(s => s);
+  log(`${screenerSymbolsCache.length} NASDAQ symbols cached for session`, 'success');
+  return screenerSymbolsCache;
+}
+
+// Generic parallel fetch worker for ALL-mode endpoints
+// fetchFn: async (symbol) => data   — should throw on failure
+// options: { concurrency, delayMs, label, onBatch, onProgress }
+async function parallelFetchAll(symbols, fetchFn, options = {}) {
+  const { concurrency = 4, delayMs = 150, label = 'Fetch', onBatch, onProgress } = options;
+  const results = [];
+  let successCount = 0;
+  let failCount = 0;
+  const total = symbols.length;
+
+  for (let i = 0; i < total; i += concurrency) {
+    if (cancelRequested) {
+      log(`${label}: Cancelled by user at ${i}/${total}`, 'warn');
+      break;
+    }
+
+    const batch = symbols.slice(i, i + concurrency);
+    const batchResults = await Promise.allSettled(batch.map(sym => fetchFn(sym)));
+
+    batchResults.forEach((res, idx) => {
+      const symbol = batch[idx];
+      if (res.status === 'fulfilled') {
+        results.push({ symbol, data: res.value, success: true });
+        successCount++;
+      } else {
+        results.push({ symbol, error: res.reason, success: false });
+        failCount++;
+        if (failCount <= 5 || i === total - 1) {
+          log(`${label} [${symbol}]: ${res.reason?.message || res.reason}`, 'warn');
+        }
+      }
+    });
+
+    if (onBatch) onBatch(batchResults, batch, i);
+
+    const processed = Math.min(i + concurrency, total);
+    if (onProgress) onProgress(processed, total, successCount, failCount);
+    if ((processed) % 20 === 0 || processed === total) {
+      const pct = Math.round((processed / total) * 100);
+      setProgress(pct, `${label} ${processed}/${total} · ${successCount} ok · ${failCount} fail`);
+      log(`${label}: ${processed}/${total} symbols · ${successCount} ok · ${failCount} fail`);
+    }
+
+    if (i + concurrency < total && !cancelRequested) {
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+
+  log(`${label}: ${successCount} succeeded · ${failCount} failed · ${results.length} total`);
+  return { results, successCount, failCount };
 }
 
 // ============================================================
@@ -1305,28 +1382,20 @@ async function loadQuotes() {
   if (resumeIndex > 0 && resumeIndex < symbols.length) symbols = symbols.slice(resumeIndex);
   else resumeIndex = 0;
 
-  log(`Fetching quotes for ${symbols.length} symbols (total: ${totalAvailable}, start: #${resumeIndex + 1})...`);
+  log(`Fetching quotes for ${symbols.length} symbols (total: ${totalAvailable}, start: #${resumeIndex + 1}) · 5 concurrent · 80ms gap`);
   const quotes = [];
-  const delayMs = quoteCount === 'ALL' ? 100 : 250;
   const startTime = Date.now();
 
-  for (let i = 0; i < symbols.length; i++) {
-    if (cancelRequested) {
-      log(`Cancel received. Saved progress at symbol #${resumeIndex + i + 1}.`, 'warn');
-      if (resumeEnabled) localStorage.setItem(resumeKey, JSON.stringify({ exchange: selectedExchange, loadDate, index: resumeIndex + i }));
-      break;
-    }
-
-    const sym = symbols[i];
-    let success = false, retries = 0;
-    while (!success && retries < 3) {
+  const fetchQuote = async (sym) => {
+    let retries = 0;
+    while (retries < 3) {
       try {
         const json = await fetchNasdaq(`/api/quote/${sym}/info?assetclass=stocks`);
         const d = json.data;
-        if (!d) { success = true; continue; }
+        if (!d) return null;
         const pd = d.primaryData || {};
         const ks = d.keyStats || {};
-        quotes.push({
+        return {
           symbol: d.symbol || sym,
           company_name: d.companyName || '',
           stock_type: d.stockType || '',
@@ -1343,28 +1412,54 @@ async function loadQuotes() {
           last_trade_timestamp: pd.lastTradeTimestamp || '',
           fifty_two_week_range: ks.fiftyTwoWeekHighLow?.value || '',
           day_range: ks.dayrange?.value || ''
-        });
-        success = true;
+        };
       } catch (e) {
         retries++;
-        if (retries < 3) { log(`Quote fetch failed for ${sym} (attempt ${retries}/3): ${e.message}. Retrying...`, 'warn'); await new Promise(r => setTimeout(r, 500 * retries)); }
-        else { log(`Quote fetch failed for ${sym} after 3 attempts: ${e.message}`, 'error'); }
+        if (retries < 3) await new Promise(r => setTimeout(r, 300 * retries));
       }
     }
+    log(`Quote fetch failed for ${sym} after 3 attempts`, 'error');
+    return null;
+  };
 
-    const overallIndex = resumeIndex + i + 1;
+  const CONCURRENCY = 5;
+  const DELAY_MS = 80;
+
+  for (let i = 0; i < symbols.length; i += CONCURRENCY) {
+    if (cancelRequested) {
+      log(`Cancel received. Saved progress at symbol #${resumeIndex + i + 1}.`, 'warn');
+      if (resumeEnabled) localStorage.setItem(resumeKey, JSON.stringify({ exchange: selectedExchange, loadDate, index: resumeIndex + i }));
+      break;
+    }
+
+    const batch = symbols.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.allSettled(batch.map(sym => fetchQuote(sym)));
+
+    batchResults.forEach((res) => {
+      if (res.status === 'fulfilled' && res.value) {
+        quotes.push(res.value);
+      }
+    });
+
+    const overallIndex = resumeIndex + Math.min(i + CONCURRENCY, symbols.length);
     const pct = Math.round((overallIndex / totalAvailable) * 100);
     const elapsed = Math.round((Date.now() - startTime) / 1000);
     const rate = elapsed > 0 ? (overallIndex / elapsed).toFixed(1) : 0;
-    setProgress(pct, `Quote ${overallIndex}/${totalAvailable}: ${sym} · ${rate}/s`);
+    setProgress(pct, `Quote ${overallIndex}/${totalAvailable} · ${rate}/s · ${quotes.length} fetched`);
 
-    if (resumeEnabled && (i + 1) % 10 === 0) {
+    if (resumeEnabled && (i + CONCURRENCY) % 20 === 0) {
       localStorage.setItem(resumeKey, JSON.stringify({ exchange: selectedExchange, loadDate, index: overallIndex }));
     }
-    if (i < symbols.length - 1 && !cancelRequested) await new Promise(r => setTimeout(r, delayMs));
+
+    if (i + CONCURRENCY < symbols.length && !cancelRequested) {
+      await new Promise(r => setTimeout(r, DELAY_MS));
+    }
   }
 
-  if (!cancelRequested && resumeEnabled) { localStorage.removeItem(resumeKey); log('Quote loading complete. Resume progress cleared.', 'success'); }
+  if (!cancelRequested && resumeEnabled) {
+    localStorage.removeItem(resumeKey);
+    log('Quote loading complete. Resume progress cleared.', 'success');
+  }
   return quotes;
 }
 
@@ -1588,13 +1683,9 @@ async function loadHistorical() {
   }
 
   // ── ALL NASDAQ MODE ──
-  log('Historical Prices: Fetching NASDAQ symbol list...');
   let symbols = [];
   try {
-    const screenerData = await fetchNasdaq('/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq');
-    const rows = screenerData?.data?.table?.rows || [];
-    symbols = rows.map(r => r.symbol).filter(s => s);
-    log(`Historical Prices: ${symbols.length} NASDAQ symbols ready`);
+    symbols = await getScreenerSymbols();
   } catch (e) {
     log(`Historical Prices: Failed to fetch symbol list — ${e.message}`, 'error');
     return [];
@@ -1605,43 +1696,30 @@ async function loadHistorical() {
     return [];
   }
 
-  log(`Starting: Historical Prices for ALL ${symbols.length} NASDAQ symbols (${fromDate} to ${toDate})`);
+  log(`Starting: Historical Prices for ALL ${symbols.length} NASDAQ symbols (${fromDate} to ${toDate}) · 4 concurrent · 150ms gap`);
 
   const allRows = [];
-  let successCount = 0;
-  let failCount = 0;
 
-  for (let i = 0; i < symbols.length; i++) {
-    if (cancelRequested) {
-      log('Historical Prices: Cancelled by user', 'warn');
-      break;
-    }
-
-    const symbol = symbols[i];
-
-    try {
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
       const normalized = await fetchSymbolHistory(symbol);
       if (normalized.length > 0) {
         allRows.push(...normalized);
-        successCount++;
+        return normalized;
       }
-    } catch (err) {
-      failCount++;
-      if (failCount <= 3 || i === symbols.length - 1) {
-        log(`Historical Prices [${symbol}]: ${err.message}`, 'warn');
+      return [];
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Historical Prices',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Historical ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
       }
     }
-
-    if ((i + 1) % 10 === 0 || i === symbols.length - 1) {
-      const pct = Math.round(((i + 1) / symbols.length) * 100);
-      setProgress(pct, `Historical ${i + 1}/${symbols.length} symbols · ${allRows.length} rows`);
-      log(`Historical Prices: ${i + 1}/${symbols.length} symbols · ${allRows.length} total rows · ${failCount} failed`);
-    }
-
-    if (i < symbols.length - 1) {
-      await new Promise(r => setTimeout(r, 250));
-    }
-  }
+  );
 
   log(`Historical Prices: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
   return allRows;
@@ -1749,13 +1827,9 @@ async function loadFinancials() {
   }
 
   // ── ALL NASDAQ MODE ──
-  log('Financials: Fetching NASDAQ symbol list...');
   let symbols = [];
   try {
-    const screenerData = await fetchNasdaq('/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq');
-    const rows = screenerData?.data?.table?.rows || [];
-    symbols = rows.map(r => r.symbol).filter(s => s);
-    log(`Financials: ${symbols.length} NASDAQ symbols ready`);
+    symbols = await getScreenerSymbols();
   } catch (e) {
     log(`Financials: Failed to fetch symbol list — ${e.message}`, 'error');
     return { income_statement: [], balance_sheet: [], cash_flow: [], financial_ratios: [] };
@@ -1766,7 +1840,7 @@ async function loadFinancials() {
     return { income_statement: [], balance_sheet: [], cash_flow: [], financial_ratios: [] };
   }
 
-  log(`Starting: Yearly Financials for ALL ${symbols.length} NASDAQ symbols`);
+  log(`Starting: Yearly Financials for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
 
   const result = {
     income_statement: [],
@@ -1774,41 +1848,28 @@ async function loadFinancials() {
     cash_flow: [],
     financial_ratios: []
   };
-  let successCount = 0;
-  let failCount = 0;
 
-  for (let i = 0; i < symbols.length; i++) {
-    if (cancelRequested) {
-      log('Financials: Cancelled by user', 'warn');
-      break;
-    }
-
-    const symbol = symbols[i];
-    try {
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
       const data = await fetchSymbolFinancials(symbol);
       result.income_statement.push(...data.income_statement);
       result.balance_sheet.push(...data.balance_sheet);
       result.cash_flow.push(...data.cash_flow);
       result.financial_ratios.push(...data.financial_ratios);
-      if (data.income_statement.length > 0 || data.balance_sheet.length > 0) successCount++;
-    } catch (err) {
-      failCount++;
-      if (failCount <= 3 || i === symbols.length - 1) {
-        log(`Financials [${symbol}]: ${err.message}`, 'warn');
+      return data;
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Yearly Financials',
+      onProgress: (processed, total, ok, fail) => {
+        const totalRows = result.income_statement.length + result.balance_sheet.length + result.cash_flow.length + result.financial_ratios.length;
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Financials ${processed}/${total} · ${totalRows} rows · ${ok} ok`);
       }
     }
-
-    if ((i + 1) % 10 === 0 || i === symbols.length - 1) {
-      const pct = Math.round(((i + 1) / symbols.length) * 100);
-      const totalRows = result.income_statement.length + result.balance_sheet.length + result.cash_flow.length + result.financial_ratios.length;
-      setProgress(pct, `Financials ${i + 1}/${symbols.length} symbols · ${totalRows} rows`);
-      log(`Financials: ${i + 1}/${symbols.length} symbols · ${totalRows} total rows · ${failCount} failed`);
-    }
-
-    if (i < symbols.length - 1) {
-      await new Promise(r => setTimeout(r, 250));
-    }
-  }
+  );
 
   const totalRows = result.income_statement.length + result.balance_sheet.length + result.cash_flow.length + result.financial_ratios.length;
   log(`Financials: ${totalRows} rows from ${successCount} symbols (${failCount} failed)`);
@@ -1915,13 +1976,9 @@ async function loadQuarterlyFinancials() {
   }
 
   // ── ALL NASDAQ MODE ──
-  log('Quarterly Financials: Fetching NASDAQ symbol list...');
   let symbols = [];
   try {
-    const screenerData = await fetchNasdaq('/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq');
-    const rows = screenerData?.data?.table?.rows || [];
-    symbols = rows.map(r => r.symbol).filter(s => s);
-    log(`Quarterly Financials: ${symbols.length} NASDAQ symbols ready`);
+    symbols = await getScreenerSymbols();
   } catch (e) {
     log(`Quarterly Financials: Failed to fetch symbol list — ${e.message}`, 'error');
     return { income_statement: [], balance_sheet: [], cash_flow: [], financial_ratios: [] };
@@ -1932,7 +1989,7 @@ async function loadQuarterlyFinancials() {
     return { income_statement: [], balance_sheet: [], cash_flow: [], financial_ratios: [] };
   }
 
-  log(`Starting: Quarterly Financials for ALL ${symbols.length} NASDAQ symbols`);
+  log(`Starting: Quarterly Financials for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
 
   const result = {
     income_statement: [],
@@ -1940,41 +1997,28 @@ async function loadQuarterlyFinancials() {
     cash_flow: [],
     financial_ratios: []
   };
-  let successCount = 0;
-  let failCount = 0;
 
-  for (let i = 0; i < symbols.length; i++) {
-    if (cancelRequested) {
-      log('Quarterly Financials: Cancelled by user', 'warn');
-      break;
-    }
-
-    const symbol = symbols[i];
-    try {
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
       const data = await fetchSymbolFinancials(symbol);
       result.income_statement.push(...data.income_statement);
       result.balance_sheet.push(...data.balance_sheet);
       result.cash_flow.push(...data.cash_flow);
       result.financial_ratios.push(...data.financial_ratios);
-      if (data.income_statement.length > 0 || data.balance_sheet.length > 0) successCount++;
-    } catch (err) {
-      failCount++;
-      if (failCount <= 3 || i === symbols.length - 1) {
-        log(`Quarterly Financials [${symbol}]: ${err.message}`, 'warn');
+      return data;
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Quarterly Financials',
+      onProgress: (processed, total, ok, fail) => {
+        const totalRows = result.income_statement.length + result.balance_sheet.length + result.cash_flow.length + result.financial_ratios.length;
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Quarterly Financials ${processed}/${total} · ${totalRows} rows · ${ok} ok`);
       }
     }
-
-    if ((i + 1) % 10 === 0 || i === symbols.length - 1) {
-      const pct = Math.round(((i + 1) / symbols.length) * 100);
-      const totalRows = result.income_statement.length + result.balance_sheet.length + result.cash_flow.length + result.financial_ratios.length;
-      setProgress(pct, `Quarterly Financials ${i + 1}/${symbols.length} symbols · ${totalRows} rows`);
-      log(`Quarterly Financials: ${i + 1}/${symbols.length} symbols · ${totalRows} total rows · ${failCount} failed`);
-    }
-
-    if (i < symbols.length - 1) {
-      await new Promise(r => setTimeout(r, 250));
-    }
-  }
+  );
 
   const totalRows = result.income_statement.length + result.balance_sheet.length + result.cash_flow.length + result.financial_ratios.length;
   log(`Quarterly Financials: ${totalRows} rows from ${successCount} symbols (${failCount} failed)`);
