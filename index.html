@@ -913,7 +913,8 @@ const NASDAQ_ENDPOINTS = [
   { id: 'historical', name: 'Historical Prices', path: '/api/quote/{symbol}/historical', description: 'Daily OHLCV price history for a symbol', table: 'nasdaq_historical', status: 'active' },
   { id: 'financials', name: 'Yearly Financials', path: '/api/company/{symbol}/financials?frequency=1', description: 'Income Statement, Balance Sheet, Cash Flow, and Financial Ratios (annual)', table: 'yearly_income_statement', status: 'active' },
   { id: 'quarterly_financials', name: 'Quarterly Financials', path: '/api/company/{symbol}/financials?frequency=2', description: 'Quarterly Income Statement, Balance Sheet, Cash Flow, and Financial Ratios', table: 'quarterly_income_statement', status: 'active' },
-  { id: 'summary', name: 'Quote Summary', path: '/api/quote/{symbol}/summary?assetclass=stocks', description: 'Key stats: sector, industry, market cap, volume, yield, bid/ask', table: 'nasdaq_summary', status: 'active' }
+  { id: 'summary', name: 'Quote Summary', path: '/api/quote/{symbol}/summary?assetclass=stocks', description: 'Key stats: sector, industry, market cap, volume, yield, bid/ask', table: 'nasdaq_summary', status: 'active' },
+  { id: 'earnings', name: 'Earnings Forecast', path: '/api/analyst/{symbol}/earnings-forecast', description: 'Quarterly and yearly EPS consensus, high/low forecasts, estimate counts, and revisions', table: 'earnings_quarterly_forecast', status: 'active' }
 ];
 
 let selectedAPIs = new Set(['screener']);
@@ -926,6 +927,7 @@ let historicalMode = 'all';  // 'all' or 'single'
 let financialMode = 'single';  // 'all' or 'single'
 let quarterlyMode = 'single';  // 'all' or 'single'
 let summaryMode = 'single';  // 'all' or 'single'
+let earningsMode = 'single';  // 'all' or 'single'
 let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
 
 // ============================================================
@@ -1015,6 +1017,13 @@ function selectSummaryMode(el) {
   log(`Quote Summary mode: ${summaryMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
 }
 
+function selectEarningsMode(el) {
+  earningsMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Earnings Forecast mode: ${earningsMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
 function cancelLoading() {
   cancelRequested = true;
   log('Cancel requested. Finishing current operation...', 'warn');
@@ -1082,6 +1091,17 @@ function discoverAPIs() {
         </span>
       </span>
     ` : '';
+    const earningsInputHtml = api.id === 'earnings' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="earnings-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${earningsMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="earnings-mode-chip ${earningsMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectEarningsMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${earningsMode === 'all' ? '#d4af37' : '#fff'};color:${earningsMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="earnings-mode-chip ${earningsMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectEarningsMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${earningsMode === 'single' ? '#d4af37' : '#fff'};color:${earningsMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
     const historicalInputHtml = api.id === 'historical' ? `
       <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
         <span style="color: #8b7355; font-size: 0.8rem;">From</span>
@@ -1106,7 +1126,7 @@ function discoverAPIs() {
       <div class="api-info">
         <span class="api-method">GET</span>
         <div>
-          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${summaryInputHtml}</div>
+          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${summaryInputHtml}${earningsInputHtml}</div>
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
@@ -1126,7 +1146,7 @@ function discoverAPIs() {
     histTo.value = new Date().toISOString().split('T')[0];
   }
 
-  log('API discovery complete. 8 endpoints found.', 'success');
+  log('API discovery complete. 9 endpoints found.', 'success');
 }
 
 function toggleAPI(id, element) {
@@ -1280,6 +1300,7 @@ async function startLoading() {
       else if (api.id === 'financials') data = await loadFinancials();
       else if (api.id === 'quarterly_financials') data = await loadQuarterlyFinancials();
       else if (api.id === 'summary') data = await loadSummary();
+      else if (api.id === 'earnings') data = await loadEarnings();
 
       if (api.id === 'financials' && data && data.income_statement) {
         const totalRows = data.income_statement.length + data.balance_sheet.length + data.cash_flow.length + data.financial_ratios.length;
@@ -1315,6 +1336,18 @@ async function startLoading() {
         log(`${api.name}: ${data.length} records fetched`, 'success');
         showPreview(api.name, data.slice(0, 10));
         await insertToSupabase(api.table, data);
+      } else if (api.id === 'earnings' && data && data.quarterly) {
+        const totalRows = data.quarterly.length + data.yearly.length;
+        if (totalRows > 0) {
+          log(`${api.name}: ${totalRows} total records fetched`, 'success');
+          showPreview('Quarterly Earnings Forecast', data.quarterly.slice(0, 10));
+          await Promise.all([
+            insertToSupabase('earnings_quarterly_forecast', data.quarterly),
+            insertToSupabase('earnings_yearly_forecast', data.yearly)
+          ]);
+        } else {
+          log(`${api.name}: No data returned`, 'warn');
+        }
       } else if (data && data.length > 0) {
         log(`${api.name}: ${data.length} records fetched`, 'success');
         showPreview(api.name, data.slice(0, 10));
@@ -2153,6 +2186,102 @@ async function loadSummary() {
 }
 
 // ============================================================
+// Earnings Forecast Loader
+// ============================================================
+
+async function loadEarnings() {
+  const fetchSymbolEarnings = async (symbol) => {
+    const path = `/api/analyst/${symbol}/earnings-forecast`;
+    const json = await fetchNasdaq(path);
+    const d = json?.data;
+    if (!d) return null;
+
+    const parseRows = (rows, sym) => {
+      return (rows || []).map(row => ({
+        symbol: sym,
+        fiscal_end: (row.fiscalEnd || '').toString().trim(),
+        consensus_eps_forecast: row.consensusEPSForecast != null ? Number(row.consensusEPSForecast) : null,
+        high_eps_forecast: row.highEPSForecast != null ? Number(row.highEPSForecast) : null,
+        low_eps_forecast: row.lowEPSForecast != null ? Number(row.lowEPSForecast) : null,
+        no_of_estimates: row.noOfEstimates != null ? parseInt(row.noOfEstimates, 10) : null,
+        revisions_up: row.up != null ? parseInt(row.up, 10) : null,
+        revisions_down: row.down != null ? parseInt(row.down, 10) : null
+      })).filter(r => r.fiscal_end !== '');
+    };
+
+    const sym = (d.symbol || symbol).toString().toUpperCase();
+    return {
+      quarterly: parseRows(d.quarterlyForecast?.rows, sym),
+      yearly: parseRows(d.yearlyForecast?.rows, sym)
+    };
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (earningsMode === 'single') {
+    const symbolInput = document.getElementById('earnings-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Earnings Forecast for ${symbol}`);
+    try {
+      const result = await fetchSymbolEarnings(symbol);
+      if (result) {
+        const totalRows = result.quarterly.length + result.yearly.length;
+        log(`Earnings Forecast [${symbol}]: ${totalRows} records fetched (Q:${result.quarterly.length} Y:${result.yearly.length})`, 'success');
+        return result;
+      }
+      return { quarterly: [], yearly: [] };
+    } catch (err) {
+      log(`Earnings Forecast [${symbol}]: ${err.message}`, 'error');
+      return { quarterly: [], yearly: [] };
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Earnings Forecast: Failed to fetch symbol list — ${e.message}`, 'error');
+    return { quarterly: [], yearly: [] };
+  }
+
+  if (symbols.length === 0) {
+    log('Earnings Forecast: No symbols found', 'warn');
+    return { quarterly: [], yearly: [] };
+  }
+
+  log(`Starting: Earnings Forecast for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+
+  const result = { quarterly: [], yearly: [] };
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const data = await fetchSymbolEarnings(symbol);
+      if (data) {
+        result.quarterly.push(...data.quarterly);
+        result.yearly.push(...data.yearly);
+        return data;
+      }
+      return null;
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Earnings Forecast',
+      onProgress: (processed, total, ok, fail) => {
+        const totalRows = result.quarterly.length + result.yearly.length;
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Earnings Forecast ${processed}/${total} · ${totalRows} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  const totalRows = result.quarterly.length + result.yearly.length;
+  log(`Earnings Forecast: ${totalRows} rows from ${successCount} symbols (${failCount} failed)`);
+  return result;
+}
+
+// ============================================================
 // Supabase Operations (with load_date)
 // ============================================================
 
@@ -2166,7 +2295,7 @@ async function insertToSupabase(table, rows) {
   const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes', 'nasdaq_summary'];
   const upsertDividends = table === 'nasdaq_dividends';
   const upsertHistorical = table === 'nasdaq_historical';
-  const financialTables = ['yearly_income_statement', 'yearly_balance_sheet', 'yearly_cash_flow', 'yearly_financial_ratios', 'quarterly_income_statement', 'quarterly_balance_sheet', 'quarterly_cash_flow', 'quarterly_financial_ratios'];
+  const financialTables = ['yearly_income_statement', 'yearly_balance_sheet', 'yearly_cash_flow', 'yearly_financial_ratios', 'quarterly_income_statement', 'quarterly_balance_sheet', 'quarterly_cash_flow', 'quarterly_financial_ratios', 'earnings_quarterly_forecast', 'earnings_yearly_forecast'];
   const isFinancial = financialTables.includes(table);
   const useUpsert = upsertTables.includes(table) || upsertDividends || upsertHistorical || isFinancial;
 
@@ -2193,6 +2322,8 @@ async function insertToSupabase(table, rows) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,ex_date', ignoreDuplicates: false }));
       } else if (upsertHistorical) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,date', ignoreDuplicates: false }));
+      } else if (table === 'earnings_quarterly_forecast' || table === 'earnings_yearly_forecast') {
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,fiscal_end,load_date', ignoreDuplicates: false }));
       } else if (isFinancial) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,period_ending,line_item', ignoreDuplicates: false }));
       } else if (useUpsert) {
