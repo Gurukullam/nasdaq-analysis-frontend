@@ -912,7 +912,8 @@ const NASDAQ_ENDPOINTS = [
   { id: 'dividends', name: 'Dividend Calendar', path: '/api/calendar/dividends', description: 'Dividend events with ex-dates and payment dates', table: 'nasdaq_dividends', status: 'active' },
   { id: 'historical', name: 'Historical Prices', path: '/api/quote/{symbol}/historical', description: 'Daily OHLCV price history for a symbol', table: 'nasdaq_historical', status: 'active' },
   { id: 'financials', name: 'Yearly Financials', path: '/api/company/{symbol}/financials?frequency=1', description: 'Income Statement, Balance Sheet, Cash Flow, and Financial Ratios (annual)', table: 'yearly_income_statement', status: 'active' },
-  { id: 'quarterly_financials', name: 'Quarterly Financials', path: '/api/company/{symbol}/financials?frequency=2', description: 'Quarterly Income Statement, Balance Sheet, Cash Flow, and Financial Ratios', table: 'quarterly_income_statement', status: 'active' }
+  { id: 'quarterly_financials', name: 'Quarterly Financials', path: '/api/company/{symbol}/financials?frequency=2', description: 'Quarterly Income Statement, Balance Sheet, Cash Flow, and Financial Ratios', table: 'quarterly_income_statement', status: 'active' },
+  { id: 'summary', name: 'Quote Summary', path: '/api/quote/{symbol}/summary?assetclass=stocks', description: 'Key stats: sector, industry, market cap, volume, yield, bid/ask', table: 'nasdaq_summary', status: 'active' }
 ];
 
 let selectedAPIs = new Set(['screener']);
@@ -924,6 +925,7 @@ let quoteCount = 'ALL';
 let historicalMode = 'all';  // 'all' or 'single'
 let financialMode = 'single';  // 'all' or 'single'
 let quarterlyMode = 'single';  // 'all' or 'single'
+let summaryMode = 'single';  // 'all' or 'single'
 let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
 
 // ============================================================
@@ -1006,6 +1008,13 @@ function selectQuarterlyMode(el) {
   log(`Quarterly Financials mode: ${quarterlyMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
 }
 
+function selectSummaryMode(el) {
+  summaryMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Quote Summary mode: ${summaryMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
 function cancelLoading() {
   cancelRequested = true;
   log('Cancel requested. Finishing current operation...', 'warn');
@@ -1062,6 +1071,17 @@ function discoverAPIs() {
         </span>
       </span>
     ` : '';
+    const summaryInputHtml = api.id === 'summary' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="summary-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${summaryMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="summary-mode-chip ${summaryMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectSummaryMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${summaryMode === 'all' ? '#d4af37' : '#fff'};color:${summaryMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="summary-mode-chip ${summaryMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectSummaryMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${summaryMode === 'single' ? '#d4af37' : '#fff'};color:${summaryMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
     const historicalInputHtml = api.id === 'historical' ? `
       <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
         <span style="color: #8b7355; font-size: 0.8rem;">From</span>
@@ -1086,7 +1106,7 @@ function discoverAPIs() {
       <div class="api-info">
         <span class="api-method">GET</span>
         <div>
-          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}</div>
+          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${summaryInputHtml}</div>
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
@@ -1106,7 +1126,7 @@ function discoverAPIs() {
     histTo.value = new Date().toISOString().split('T')[0];
   }
 
-  log('API discovery complete. 7 endpoints found.', 'success');
+  log('API discovery complete. 8 endpoints found.', 'success');
 }
 
 function toggleAPI(id, element) {
@@ -1259,6 +1279,7 @@ async function startLoading() {
       else if (api.id === 'historical') data = await loadHistorical();
       else if (api.id === 'financials') data = await loadFinancials();
       else if (api.id === 'quarterly_financials') data = await loadQuarterlyFinancials();
+      else if (api.id === 'summary') data = await loadSummary();
 
       if (api.id === 'financials' && data && data.income_statement) {
         const totalRows = data.income_statement.length + data.balance_sheet.length + data.cash_flow.length + data.financial_ratios.length;
@@ -1290,6 +1311,10 @@ async function startLoading() {
         } else {
           log(`${api.name}: No data returned`, 'warn');
         }
+      } else if (api.id === 'summary' && data && data.length > 0) {
+        log(`${api.name}: ${data.length} records fetched`, 'success');
+        showPreview(api.name, data.slice(0, 10));
+        await insertToSupabase(api.table, data);
       } else if (data && data.length > 0) {
         log(`${api.name}: ${data.length} records fetched`, 'success');
         showPreview(api.name, data.slice(0, 10));
@@ -2026,6 +2051,108 @@ async function loadQuarterlyFinancials() {
 }
 
 // ============================================================
+// Quote Summary Loader
+// ============================================================
+
+async function loadSummary() {
+  const cleanText = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().trim();
+    return s.length > 0 && s !== 'N/A' ? s : null;
+  };
+
+  const fetchSymbolSummary = async (symbol) => {
+    const path = `/api/quote/${symbol}/summary?assetclass=stocks`;
+    const json = await fetchNasdaq(path);
+    const d = json?.data;
+    if (!d) return null;
+
+    const sd = d.summaryData || {};
+    const ba = d.bidAsk || {};
+
+    return {
+      symbol: d.symbol || symbol,
+      exchange: cleanText(sd.Exchange?.value),
+      sector: cleanText(sd.Sector?.value),
+      industry: cleanText(sd.Industry?.value),
+      one_year_target: cleanText(sd.OneYrTarget?.value),
+      today_high_low: cleanText(sd.TodayHighLow?.value),
+      share_volume: cleanText(sd.ShareVolume?.value),
+      average_volume: cleanText(sd.AverageVolume?.value),
+      previous_close: cleanText(sd.PreviousClose?.value),
+      fifty_two_week_high_low: cleanText(sd.FiftTwoWeekHighLow?.value),
+      market_cap: cleanText(sd.MarketCap?.value),
+      annualized_dividend: cleanText(sd.AnnualizedDividend?.value),
+      ex_dividend_date: cleanText(sd.ExDividendDate?.value),
+      dividend_payment_date: cleanText(sd.DividendPaymentDate?.value),
+      yield: cleanText(sd.Yield?.value),
+      bid_size: cleanText(ba['Bid * Size']?.value),
+      ask_size: cleanText(ba['Ask * Size']?.value)
+    };
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (summaryMode === 'single') {
+    const symbolInput = document.getElementById('summary-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Quote Summary for ${symbol}`);
+    try {
+      const result = await fetchSymbolSummary(symbol);
+      if (result) {
+        log(`Quote Summary [${symbol}]: 1 record fetched`, 'success');
+        return [result];
+      }
+      return [];
+    } catch (err) {
+      log(`Quote Summary [${symbol}]: ${err.message}`, 'error');
+      return [];
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Quote Summary: Failed to fetch symbol list — ${e.message}`, 'error');
+    return [];
+  }
+
+  if (symbols.length === 0) {
+    log('Quote Summary: No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Quote Summary for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const result = await fetchSymbolSummary(symbol);
+      if (result) {
+        allRows.push(result);
+        return result;
+      }
+      return null;
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Quote Summary',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Quote Summary ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Quote Summary: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
+}
+
+// ============================================================
 // Supabase Operations (with load_date)
 // ============================================================
 
@@ -2036,7 +2163,7 @@ async function insertToSupabase(table, rows) {
   rows.forEach(r => r.load_date = loadDate);
   const rowsWithDate = rows;
 
-  const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes'];
+  const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes', 'nasdaq_summary'];
   const upsertDividends = table === 'nasdaq_dividends';
   const upsertHistorical = table === 'nasdaq_historical';
   const financialTables = ['yearly_income_statement', 'yearly_balance_sheet', 'yearly_cash_flow', 'yearly_financial_ratios', 'quarterly_income_statement', 'quarterly_balance_sheet', 'quarterly_cash_flow', 'quarterly_financial_ratios'];
@@ -2145,7 +2272,8 @@ async function updateStats() {
     { name: 'quarterly_income_statement', statId: 'stat-qincome', metaId: 'meta-qincome' },
     { name: 'quarterly_balance_sheet', statId: 'stat-qbalance', metaId: 'meta-qbalance' },
     { name: 'quarterly_cash_flow', statId: 'stat-qcashflow', metaId: 'meta-qcashflow' },
-    { name: 'quarterly_financial_ratios', statId: 'stat-qratios', metaId: 'meta-qratios' }
+    { name: 'quarterly_financial_ratios', statId: 'stat-qratios', metaId: 'meta-qratios' },
+    { name: 'nasdaq_summary', statId: 'stat-summary', metaId: 'meta-summary' }
   ];
   const today = getUSLoadDate();
   for (const t of tables) {
@@ -2232,7 +2360,7 @@ discoverAPIs();
 updateQuoteEstimate();
 document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
 log('NASDAQ Analysis AI — Phase 2 initialized. Full record fetch enabled.', 'success');
-log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131 | Historical: new | Financials: new | Quarterly: new', 'info');
+log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131 | Historical: new | Financials: new | Quarterly: new | Summary: new', 'info');
 </script>
 
 </body>
