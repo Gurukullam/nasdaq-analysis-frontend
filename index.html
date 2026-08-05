@@ -914,7 +914,8 @@ const NASDAQ_ENDPOINTS = [
   { id: 'financials', name: 'Yearly Financials', path: '/api/company/{symbol}/financials?frequency=1', description: 'Income Statement, Balance Sheet, Cash Flow, and Financial Ratios (annual)', table: 'yearly_income_statement', status: 'active' },
   { id: 'quarterly_financials', name: 'Quarterly Financials', path: '/api/company/{symbol}/financials?frequency=2', description: 'Quarterly Income Statement, Balance Sheet, Cash Flow, and Financial Ratios', table: 'quarterly_income_statement', status: 'active' },
   { id: 'summary', name: 'Quote Summary', path: '/api/quote/{symbol}/summary?assetclass=stocks', description: 'Key stats: sector, industry, market cap, volume, yield, bid/ask', table: 'nasdaq_summary', status: 'active' },
-  { id: 'earnings', name: 'Earnings Forecast', path: '/api/analyst/{symbol}/earnings-forecast', description: 'Quarterly and yearly EPS consensus, high/low forecasts, estimate counts, and revisions', table: 'earnings_quarterly_forecast', status: 'active' }
+  { id: 'earnings', name: 'Earnings Forecast', path: '/api/analyst/{symbol}/earnings-forecast', description: 'Quarterly and yearly EPS consensus, high/low forecasts, estimate counts, and revisions', table: 'earnings_quarterly_forecast', status: 'active' },
+  { id: 'earnings_surprise', name: 'Earnings Surprise', path: '/api/company/{symbol}/earnings-surprise', description: 'Historical EPS actuals vs consensus forecasts with surprise percentages', table: 'earnings_surprise', status: 'active' }
 ];
 
 let selectedAPIs = new Set(['screener']);
@@ -928,6 +929,7 @@ let financialMode = 'single';  // 'all' or 'single'
 let quarterlyMode = 'single';  // 'all' or 'single'
 let summaryMode = 'single';  // 'all' or 'single'
 let earningsMode = 'single';  // 'all' or 'single'
+let earningsSurpriseMode = 'single';  // 'all' or 'single'
 let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
 
 // ============================================================
@@ -1024,6 +1026,13 @@ function selectEarningsMode(el) {
   log(`Earnings Forecast mode: ${earningsMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
 }
 
+function selectEarningsSurpriseMode(el) {
+  earningsSurpriseMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Earnings Surprise mode: ${earningsSurpriseMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
 function cancelLoading() {
   cancelRequested = true;
   log('Cancel requested. Finishing current operation...', 'warn');
@@ -1102,6 +1111,17 @@ function discoverAPIs() {
         </span>
       </span>
     ` : '';
+    const earningsSurpriseInputHtml = api.id === 'earnings_surprise' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="earnings-surprise-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${earningsSurpriseMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="earnings-surprise-mode-chip ${earningsSurpriseMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectEarningsSurpriseMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${earningsSurpriseMode === 'all' ? '#d4af37' : '#fff'};color:${earningsSurpriseMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="earnings-surprise-mode-chip ${earningsSurpriseMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectEarningsSurpriseMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${earningsSurpriseMode === 'single' ? '#d4af37' : '#fff'};color:${earningsSurpriseMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
     const historicalInputHtml = api.id === 'historical' ? `
       <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
         <span style="color: #8b7355; font-size: 0.8rem;">From</span>
@@ -1126,7 +1146,7 @@ function discoverAPIs() {
       <div class="api-info">
         <span class="api-method">GET</span>
         <div>
-          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${summaryInputHtml}${earningsInputHtml}</div>
+          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${summaryInputHtml}${earningsInputHtml}${earningsSurpriseInputHtml}</div>
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
@@ -1146,7 +1166,7 @@ function discoverAPIs() {
     histTo.value = new Date().toISOString().split('T')[0];
   }
 
-  log('API discovery complete. 9 endpoints found.', 'success');
+  log('API discovery complete. 10 endpoints found.', 'success');
 }
 
 function toggleAPI(id, element) {
@@ -1301,6 +1321,7 @@ async function startLoading() {
       else if (api.id === 'quarterly_financials') data = await loadQuarterlyFinancials();
       else if (api.id === 'summary') data = await loadSummary();
       else if (api.id === 'earnings') data = await loadEarnings();
+      else if (api.id === 'earnings_surprise') data = await loadEarningsSurprise();
 
       if (api.id === 'financials' && data && data.income_statement) {
         const totalRows = data.income_statement.length + data.balance_sheet.length + data.cash_flow.length + data.financial_ratios.length;
@@ -1348,6 +1369,10 @@ async function startLoading() {
         } else {
           log(`${api.name}: No data returned`, 'warn');
         }
+      } else if (api.id === 'earnings_surprise' && data && data.length > 0) {
+        log(`${api.name}: ${data.length} records fetched`, 'success');
+        showPreview(api.name, data.slice(0, 10));
+        await insertToSupabase(api.table, data);
       } else if (data && data.length > 0) {
         log(`${api.name}: ${data.length} records fetched`, 'success');
         showPreview(api.name, data.slice(0, 10));
@@ -2282,6 +2307,108 @@ async function loadEarnings() {
 }
 
 // ============================================================
+// Earnings Surprise Loader
+// ============================================================
+
+async function loadEarningsSurprise() {
+  const toISODate = (val) => {
+    const s = (val || '').toString().trim();
+    if (!s) return null;
+    const parts = s.split('/');
+    if (parts.length === 3) {
+      const m = parts[0].padStart(2, '0');
+      const d = parts[1].padStart(2, '0');
+      const y = parts[2];
+      return `${y}-${m}-${d}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return null;
+  };
+
+  const toNumber = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,%]/g, '').trim();
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? null : n;
+  };
+
+  const fetchSymbolSurprise = async (symbol) => {
+    const path = `/api/company/${symbol}/earnings-surprise`;
+    const json = await fetchNasdaq(path);
+    const d = json?.data;
+    if (!d) return null;
+
+    const rows = d.earningsSurpriseTable?.rows || [];
+    const sym = (d.symbol || symbol).toString().toUpperCase();
+    return rows.map(row => ({
+      symbol: sym,
+      fiscal_quarter_end: (row.fiscalQtrEnd || '').toString().trim(),
+      date_reported: toISODate(row.dateReported),
+      eps: toNumber(row.eps),
+      consensus_forecast: toNumber(row.consensusForecast),
+      percentage_surprise: toNumber(row.percentageSurprise)
+    })).filter(r => r.fiscal_quarter_end !== '');
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (earningsSurpriseMode === 'single') {
+    const symbolInput = document.getElementById('earnings-surprise-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Earnings Surprise for ${symbol}`);
+    try {
+      const result = await fetchSymbolSurprise(symbol);
+      log(`Earnings Surprise [${symbol}]: ${result.length} records fetched`, 'success');
+      return result;
+    } catch (err) {
+      log(`Earnings Surprise [${symbol}]: ${err.message}`, 'error');
+      return [];
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Earnings Surprise: Failed to fetch symbol list — ${e.message}`, 'error');
+    return [];
+  }
+
+  if (symbols.length === 0) {
+    log('Earnings Surprise: No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Earnings Surprise for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const rows = await fetchSymbolSurprise(symbol);
+      if (rows && rows.length > 0) {
+        allRows.push(...rows);
+        return rows;
+      }
+      return [];
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Earnings Surprise',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Earnings Surprise ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Earnings Surprise: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
+}
+
+// ============================================================
 // Supabase Operations (with load_date)
 // ============================================================
 
@@ -2295,7 +2422,7 @@ async function insertToSupabase(table, rows) {
   const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes', 'nasdaq_summary'];
   const upsertDividends = table === 'nasdaq_dividends';
   const upsertHistorical = table === 'nasdaq_historical';
-  const financialTables = ['yearly_income_statement', 'yearly_balance_sheet', 'yearly_cash_flow', 'yearly_financial_ratios', 'quarterly_income_statement', 'quarterly_balance_sheet', 'quarterly_cash_flow', 'quarterly_financial_ratios', 'earnings_quarterly_forecast', 'earnings_yearly_forecast'];
+  const financialTables = ['yearly_income_statement', 'yearly_balance_sheet', 'yearly_cash_flow', 'yearly_financial_ratios', 'quarterly_income_statement', 'quarterly_balance_sheet', 'quarterly_cash_flow', 'quarterly_financial_ratios', 'earnings_quarterly_forecast', 'earnings_yearly_forecast', 'earnings_surprise'];
   const isFinancial = financialTables.includes(table);
   const useUpsert = upsertTables.includes(table) || upsertDividends || upsertHistorical || isFinancial;
 
@@ -2324,6 +2451,8 @@ async function insertToSupabase(table, rows) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,date', ignoreDuplicates: false }));
       } else if (table === 'earnings_quarterly_forecast' || table === 'earnings_yearly_forecast') {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,fiscal_end,load_date', ignoreDuplicates: false }));
+      } else if (table === 'earnings_surprise') {
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,fiscal_quarter_end,load_date', ignoreDuplicates: false }));
       } else if (isFinancial) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,period_ending,line_item', ignoreDuplicates: false }));
       } else if (useUpsert) {
