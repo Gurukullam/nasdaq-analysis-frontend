@@ -915,7 +915,8 @@ const NASDAQ_ENDPOINTS = [
   { id: 'quarterly_financials', name: 'Quarterly Financials', path: '/api/company/{symbol}/financials?frequency=2', description: 'Quarterly Income Statement, Balance Sheet, Cash Flow, and Financial Ratios', table: 'quarterly_income_statement', status: 'active' },
   { id: 'summary', name: 'Quote Summary', path: '/api/quote/{symbol}/summary?assetclass=stocks', description: 'Key stats: sector, industry, market cap, volume, yield, bid/ask', table: 'nasdaq_summary', status: 'active' },
   { id: 'earnings', name: 'Earnings Forecast', path: '/api/analyst/{symbol}/earnings-forecast', description: 'Quarterly and yearly EPS consensus, high/low forecasts, estimate counts, and revisions', table: 'earnings_quarterly_forecast', status: 'active' },
-  { id: 'earnings_surprise', name: 'Earnings Surprise', path: '/api/company/{symbol}/earnings-surprise', description: 'Historical EPS actuals vs consensus forecasts with surprise percentages', table: 'earnings_surprise', status: 'active' }
+  { id: 'earnings_surprise', name: 'Earnings Surprise', path: '/api/company/{symbol}/earnings-surprise', description: 'Historical EPS actuals vs consensus forecasts with surprise percentages', table: 'earnings_surprise', status: 'active' },
+  { id: 'news', name: 'Company News', path: '/api/news/topic/articlebysymbol?q={symbol}|STOCKS&offset=0&limit=10&fallback=true', description: 'Latest news articles with headlines, summaries, authors, and publish dates', table: 'nasdaq_news', status: 'active' }
 ];
 
 let selectedAPIs = new Set(['screener']);
@@ -930,6 +931,7 @@ let quarterlyMode = 'single';  // 'all' or 'single'
 let summaryMode = 'single';  // 'all' or 'single'
 let earningsMode = 'single';  // 'all' or 'single'
 let earningsSurpriseMode = 'single';  // 'all' or 'single'
+let newsMode = 'single';  // 'all' or 'single'
 let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
 
 // ============================================================
@@ -1033,6 +1035,13 @@ function selectEarningsSurpriseMode(el) {
   log(`Earnings Surprise mode: ${earningsSurpriseMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
 }
 
+function selectNewsMode(el) {
+  newsMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Company News mode: ${newsMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
 function cancelLoading() {
   cancelRequested = true;
   log('Cancel requested. Finishing current operation...', 'warn');
@@ -1122,6 +1131,17 @@ function discoverAPIs() {
         </span>
       </span>
     ` : '';
+    const newsInputHtml = api.id === 'news' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="news-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${newsMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="news-mode-chip ${newsMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectNewsMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${newsMode === 'all' ? '#d4af37' : '#fff'};color:${newsMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="news-mode-chip ${newsMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectNewsMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${newsMode === 'single' ? '#d4af37' : '#fff'};color:${newsMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
     const historicalInputHtml = api.id === 'historical' ? `
       <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
         <span style="color: #8b7355; font-size: 0.8rem;">From</span>
@@ -1146,7 +1166,7 @@ function discoverAPIs() {
       <div class="api-info">
         <span class="api-method">GET</span>
         <div>
-          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${summaryInputHtml}${earningsInputHtml}${earningsSurpriseInputHtml}</div>
+          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${summaryInputHtml}${earningsInputHtml}${earningsSurpriseInputHtml}${newsInputHtml}</div>
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
@@ -1166,7 +1186,7 @@ function discoverAPIs() {
     histTo.value = new Date().toISOString().split('T')[0];
   }
 
-  log('API discovery complete. 10 endpoints found.', 'success');
+  log('API discovery complete. 11 endpoints found.', 'success');
 }
 
 function toggleAPI(id, element) {
@@ -1322,6 +1342,7 @@ async function startLoading() {
       else if (api.id === 'summary') data = await loadSummary();
       else if (api.id === 'earnings') data = await loadEarnings();
       else if (api.id === 'earnings_surprise') data = await loadEarningsSurprise();
+      else if (api.id === 'news') data = await loadNews();
 
       if (api.id === 'financials' && data && data.income_statement) {
         const totalRows = data.income_statement.length + data.balance_sheet.length + data.cash_flow.length + data.financial_ratios.length;
@@ -2409,6 +2430,107 @@ async function loadEarningsSurprise() {
 }
 
 // ============================================================
+// Company News Loader
+// ============================================================
+
+async function loadNews() {
+  const cleanText = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().trim();
+    return s.length > 0 && s !== 'N/A' ? s : null;
+  };
+
+  const toISODateTime = (val) => {
+    const s = (val || '').toString().trim();
+    if (!s) return null;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  };
+
+  const fetchSymbolNews = async (symbol) => {
+    const path = `/api/news/topic/articlebysymbol?q=${encodeURIComponent(symbol + '|STOCKS')}&offset=0&limit=10&fallback=true`;
+    const json = await fetchNasdaq(path);
+    const d = json?.data;
+    if (!d) return [];
+
+    let rows = [];
+    if (Array.isArray(d.rows)) rows = d.rows;
+    else if (Array.isArray(d)) rows = d;
+
+    const sym = symbol.toString().toUpperCase();
+    return rows.map(row => ({
+      symbol: sym,
+      article_id: cleanText(row.id || row.articleId || row.guid),
+      headline: cleanText(row.title || row.headline),
+      summary: cleanText(row.summary || row.description),
+      author: cleanText(row.author),
+      published: toISODateTime(row.published || row.publishDate || row.created),
+      url: cleanText(row.url || row.link),
+      source: cleanText(row.source || row.publisher),
+      tags: cleanText(row.tags ? (Array.isArray(row.tags) ? row.tags.join(', ') : row.tags) : null),
+      image_url: cleanText(row.image || row.imageUrl || row.thumbnail)
+    })).filter(r => r.headline !== null);
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (newsMode === 'single') {
+    const symbolInput = document.getElementById('news-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Company News for ${symbol}`);
+    try {
+      const result = await fetchSymbolNews(symbol);
+      log(`Company News [${symbol}]: ${result.length} records fetched`, 'success');
+      return result;
+    } catch (err) {
+      log(`Company News [${symbol}]: ${err.message}`, 'error');
+      return [];
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Company News: Failed to fetch symbol list — ${e.message}`, 'error');
+    return [];
+  }
+
+  if (symbols.length === 0) {
+    log('Company News: No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Company News for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const rows = await fetchSymbolNews(symbol);
+      if (rows && rows.length > 0) {
+        allRows.push(...rows);
+        return rows;
+      }
+      return [];
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Company News',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Company News ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Company News: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
+}
+
+// ============================================================
 // Supabase Operations (with load_date)
 // ============================================================
 
@@ -2422,9 +2544,10 @@ async function insertToSupabase(table, rows) {
   const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes', 'nasdaq_summary'];
   const upsertDividends = table === 'nasdaq_dividends';
   const upsertHistorical = table === 'nasdaq_historical';
+  const upsertNews = table === 'nasdaq_news';
   const financialTables = ['yearly_income_statement', 'yearly_balance_sheet', 'yearly_cash_flow', 'yearly_financial_ratios', 'quarterly_income_statement', 'quarterly_balance_sheet', 'quarterly_cash_flow', 'quarterly_financial_ratios', 'earnings_quarterly_forecast', 'earnings_yearly_forecast', 'earnings_surprise'];
   const isFinancial = financialTables.includes(table);
-  const useUpsert = upsertTables.includes(table) || upsertDividends || upsertHistorical || isFinancial;
+  const useUpsert = upsertTables.includes(table) || upsertDividends || upsertHistorical || upsertNews || isFinancial;
 
   // Financial data = millions of rows → bigger batches + parallel concurrency
   const batchSize = isFinancial ? 1500 : 500;
@@ -2453,6 +2576,8 @@ async function insertToSupabase(table, rows) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,fiscal_end,load_date', ignoreDuplicates: false }));
       } else if (table === 'earnings_surprise') {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,fiscal_quarter_end,load_date', ignoreDuplicates: false }));
+      } else if (upsertNews) {
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,article_id,load_date', ignoreDuplicates: false }));
       } else if (isFinancial) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,period_ending,line_item', ignoreDuplicates: false }));
       } else if (useUpsert) {
@@ -2474,6 +2599,8 @@ async function insertToSupabase(table, rows) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,date', ignoreDuplicates: false }));
               } else if (isFinancial) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,period_ending,line_item', ignoreDuplicates: false }));
+              } else if (upsertNews) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,article_id,load_date', ignoreDuplicates: false }));
               } else if (useUpsert) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
               } else {
@@ -2533,7 +2660,8 @@ async function updateStats() {
     { name: 'quarterly_balance_sheet', statId: 'stat-qbalance', metaId: 'meta-qbalance' },
     { name: 'quarterly_cash_flow', statId: 'stat-qcashflow', metaId: 'meta-qcashflow' },
     { name: 'quarterly_financial_ratios', statId: 'stat-qratios', metaId: 'meta-qratios' },
-    { name: 'nasdaq_summary', statId: 'stat-summary', metaId: 'meta-summary' }
+    { name: 'nasdaq_summary', statId: 'stat-summary', metaId: 'meta-summary' },
+    { name: 'nasdaq_news', statId: 'stat-news', metaId: 'meta-news' }
   ];
   const today = getUSLoadDate();
   for (const t of tables) {
@@ -2620,7 +2748,7 @@ discoverAPIs();
 updateQuoteEstimate();
 document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
 log('NASDAQ Analysis AI — Phase 2 initialized. Full record fetch enabled.', 'success');
-log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131 | Historical: new | Financials: new | Quarterly: new | Summary: new', 'info');
+log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131 | Historical: new | Financials: new | Quarterly: new | Summary: new | News: new', 'info');
 </script>
 
 </body>
