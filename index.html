@@ -917,7 +917,8 @@ const NASDAQ_ENDPOINTS = [
   { id: 'summary', name: 'Quote Summary', path: '/api/quote/{symbol}/summary?assetclass=stocks', description: 'Key stats: sector, industry, market cap, volume, yield, bid/ask', table: 'nasdaq_summary', status: 'active' },
   { id: 'earnings', name: 'Earnings Forecast', path: '/api/analyst/{symbol}/earnings-forecast', description: 'Quarterly and yearly EPS consensus, high/low forecasts, estimate counts, and revisions', table: 'earnings_quarterly_forecast', status: 'active' },
   { id: 'earnings_surprise', name: 'Earnings Surprise', path: '/api/company/{symbol}/earnings-surprise', description: 'Historical EPS actuals vs consensus forecasts with surprise percentages', table: 'earnings_surprise', status: 'active' },
-  { id: 'news', name: 'Company News', path: '/api/news/topic/articlebysymbol?q={symbol}|STOCKS&offset=0&limit=10&fallback=true', description: 'Latest news articles with headlines, summaries, authors, and publish dates', table: 'nasdaq_news', status: 'active' }
+  { id: 'news', name: 'Company News', path: '/api/news/topic/articlebysymbol?q={symbol}|STOCKS&offset=0&limit=10&fallback=true', description: 'Latest news articles with headlines, summaries, authors, and publish dates', table: 'nasdaq_news', status: 'active' },
+  { id: 'symbol_dividends', name: 'Symbol Dividends', path: '/api/quote/{symbol}/dividends?assetclass=stocks', description: 'Dividend history for a symbol with ex-dates, amounts, and payment dates', table: 'nasdaq_symbol_dividends', status: 'active' }
 ];
 
 let selectedAPIs = new Set(['screener']);
@@ -934,6 +935,7 @@ let earningsMode = 'single';  // 'all' or 'single'
 let earningsSurpriseMode = 'single';  // 'all' or 'single'
 let newsMode = 'single';  // 'all' or 'single'
 let institutionalMode = 'single';  // 'all' or 'single'
+let symbolDividendsMode = 'single';  // 'all' or 'single'
 let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
 
 // ============================================================
@@ -1051,6 +1053,13 @@ function selectInstitutionalMode(el) {
   log(`Institutional Holdings mode: ${institutionalMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
 }
 
+function selectSymbolDividendsMode(el) {
+  symbolDividendsMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Symbol Dividends mode: ${symbolDividendsMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
 function cancelLoading() {
   cancelRequested = true;
   log('Cancel requested. Finishing current operation...', 'warn');
@@ -1162,6 +1171,17 @@ function discoverAPIs() {
         </span>
       </span>
     ` : '';
+    const symbolDividendsInputHtml = api.id === 'symbol_dividends' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="symbol-dividends-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${symbolDividendsMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="symbol-dividends-mode-chip ${symbolDividendsMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectSymbolDividendsMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${symbolDividendsMode === 'all' ? '#d4af37' : '#fff'};color:${symbolDividendsMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="symbol-dividends-mode-chip ${symbolDividendsMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectSymbolDividendsMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${symbolDividendsMode === 'single' ? '#d4af37' : '#fff'};color:${symbolDividendsMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
     const historicalInputHtml = api.id === 'historical' ? `
       <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
         <span style="color: #8b7355; font-size: 0.8rem;">From</span>
@@ -1186,7 +1206,7 @@ function discoverAPIs() {
       <div class="api-info">
         <span class="api-method">GET</span>
         <div>
-          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${institutionalInputHtml}${summaryInputHtml}${earningsInputHtml}${earningsSurpriseInputHtml}${newsInputHtml}</div>
+          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${institutionalInputHtml}${summaryInputHtml}${earningsInputHtml}${earningsSurpriseInputHtml}${newsInputHtml}${symbolDividendsInputHtml}</div>
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
@@ -1206,7 +1226,7 @@ function discoverAPIs() {
     histTo.value = new Date().toISOString().split('T')[0];
   }
 
-  log('API discovery complete. 12 endpoints found.', 'success');
+  log('API discovery complete. 13 endpoints found.', 'success');
 }
 
 function toggleAPI(id, element) {
@@ -1364,6 +1384,7 @@ async function startLoading() {
       else if (api.id === 'earnings') data = await loadEarnings();
       else if (api.id === 'earnings_surprise') data = await loadEarningsSurprise();
       else if (api.id === 'news') data = await loadNews();
+      else if (api.id === 'symbol_dividends') data = await loadSymbolDividends();
 
       if (api.id === 'financials' && data && data.income_statement) {
         const totalRows = data.income_statement.length + data.balance_sheet.length + data.cash_flow.length + data.financial_ratios.length;
@@ -1416,6 +1437,10 @@ async function startLoading() {
         showPreview(api.name, data.slice(0, 10));
         await insertToSupabase(api.table, data);
       } else if (api.id === 'institutional_holdings' && data && data.length > 0) {
+        log(`${api.name}: ${data.length} records fetched`, 'success');
+        showPreview(api.name, data.slice(0, 10));
+        await insertToSupabase(api.table, data);
+      } else if (api.id === 'symbol_dividends' && data && data.length > 0) {
         log(`${api.name}: ${data.length} records fetched`, 'success');
         showPreview(api.name, data.slice(0, 10));
         await insertToSupabase(api.table, data);
@@ -2667,6 +2692,115 @@ async function loadNews() {
 }
 
 // ============================================================
+// Symbol Dividends Loader
+// ============================================================
+
+async function loadSymbolDividends() {
+  const toISODate = (val) => {
+    const s = (val || '').toString().trim();
+    if (!s) return null;
+    const parts = s.split('/');
+    if (parts.length === 3) {
+      const m = parts[0].padStart(2, '0');
+      const d = parts[1].padStart(2, '0');
+      const y = parts[2];
+      return `${y}-${m}-${d}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return null;
+  };
+
+  const cleanText = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().trim();
+    return s.length > 0 && s !== 'N/A' ? s : null;
+  };
+
+  const cleanAmount = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().replace(/[$,]/g, '').trim();
+    return s.length > 0 && s !== '--' ? s : null;
+  };
+
+  const fetchSymbolDividends = async (symbol) => {
+    const path = `/api/quote/${symbol}/dividends?assetclass=stocks`;
+    const json = await fetchNasdaq(path);
+    const d = json?.data;
+    if (!d) return [];
+
+    const rows = d.dividends?.rows || [];
+    const sym = symbol.toString().toUpperCase();
+    return rows.map(row => ({
+      symbol: sym,
+      ex_date: toISODate(row.exOrEffDate),
+      dividend_type: cleanText(row.type),
+      dividend_amount: cleanAmount(row.amount),
+      declaration_date: toISODate(row.declarationDate),
+      record_date: toISODate(row.recordDate),
+      payment_date: toISODate(row.paymentDate),
+      currency: cleanText(row.currency)
+    })).filter(r => r.ex_date !== null);
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (symbolDividendsMode === 'single') {
+    const symbolInput = document.getElementById('symbol-dividends-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Symbol Dividends for ${symbol}`);
+    try {
+      const result = await fetchSymbolDividends(symbol);
+      log(`Symbol Dividends [${symbol}]: ${result.length} records fetched`, 'success');
+      return result;
+    } catch (err) {
+      log(`Symbol Dividends [${symbol}]: ${err.message}`, 'error');
+      return [];
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Symbol Dividends: Failed to fetch symbol list — ${e.message}`, 'error');
+    return [];
+  }
+
+  if (symbols.length === 0) {
+    log('Symbol Dividends: No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Symbol Dividends for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const rows = await fetchSymbolDividends(symbol);
+      if (rows && rows.length > 0) {
+        allRows.push(...rows);
+        return rows;
+      }
+      return [];
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Symbol Dividends',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Symbol Dividends ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Symbol Dividends: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
+}
+
+// ============================================================
 // Supabase Operations (with load_date)
 // ============================================================
 
@@ -2681,9 +2815,11 @@ async function insertToSupabase(table, rows) {
   const upsertDividends = table === 'nasdaq_dividends';
   const upsertHistorical = table === 'nasdaq_historical';
   const upsertNews = table === 'nasdaq_news';
+  const upsertInstitutionalHoldings = table === 'nasdaq_institutional_holdings';
+  const upsertSymbolDividends = table === 'nasdaq_symbol_dividends';
   const financialTables = ['yearly_income_statement', 'yearly_balance_sheet', 'yearly_cash_flow', 'yearly_financial_ratios', 'quarterly_income_statement', 'quarterly_balance_sheet', 'quarterly_cash_flow', 'quarterly_financial_ratios', 'earnings_quarterly_forecast', 'earnings_yearly_forecast', 'earnings_surprise'];
   const isFinancial = financialTables.includes(table);
-  const useUpsert = upsertTables.includes(table) || upsertDividends || upsertHistorical || upsertNews || isFinancial;
+  const useUpsert = upsertTables.includes(table) || upsertDividends || upsertHistorical || upsertNews || upsertInstitutionalHoldings || upsertSymbolDividends || isFinancial;
 
   // Financial data = millions of rows → bigger batches + parallel concurrency
   const batchSize = isFinancial ? 1500 : 500;
@@ -2716,6 +2852,8 @@ async function insertToSupabase(table, rows) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,article_id,load_date', ignoreDuplicates: false }));
       } else if (table === 'nasdaq_institutional_holdings') {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,owner_name,report_date,load_date', ignoreDuplicates: false }));
+      } else if (upsertSymbolDividends) {
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,ex_date,load_date', ignoreDuplicates: false }));
       } else if (isFinancial) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,period_ending,line_item', ignoreDuplicates: false }));
       } else if (useUpsert) {
@@ -2739,6 +2877,10 @@ async function insertToSupabase(table, rows) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,period_ending,line_item', ignoreDuplicates: false }));
               } else if (upsertNews) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,article_id,load_date', ignoreDuplicates: false }));
+              } else if (upsertInstitutionalHoldings) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,owner_name,report_date,load_date', ignoreDuplicates: false }));
+              } else if (upsertSymbolDividends) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,ex_date,load_date', ignoreDuplicates: false }));
               } else if (useUpsert) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
               } else {
@@ -2799,15 +2941,24 @@ async function updateStats() {
     { name: 'quarterly_cash_flow', statId: 'stat-qcashflow', metaId: 'meta-qcashflow' },
     { name: 'quarterly_financial_ratios', statId: 'stat-qratios', metaId: 'meta-qratios' },
     { name: 'nasdaq_summary', statId: 'stat-summary', metaId: 'meta-summary' },
-    { name: 'nasdaq_news', statId: 'stat-news', metaId: 'meta-news' }
+    { name: 'earnings_quarterly_forecast', statId: 'stat-eq', metaId: 'meta-eq' },
+    { name: 'earnings_yearly_forecast', statId: 'stat-ey', metaId: 'meta-ey' },
+    { name: 'earnings_surprise', statId: 'stat-es', metaId: 'meta-es' },
+    { name: 'nasdaq_news', statId: 'stat-news', metaId: 'meta-news' },
+    { name: 'nasdaq_institutional_holdings', statId: 'stat-ih', metaId: 'meta-ih' },
+    { name: 'nasdaq_symbol_dividends', statId: 'stat-sd', metaId: 'meta-sd' }
   ];
   const today = getUSLoadDate();
   for (const t of tables) {
+    // Stats bar may be hidden/absent from DOM — null-guard all lookups
+    const statEl = document.getElementById(t.statId);
+    const metaEl = document.getElementById(t.metaId);
+    if (!statEl && !metaEl) continue;
     try {
       const { count: totalCount } = await supabaseClient.from(t.name).select('*', { count: 'exact', head: true });
-      if (totalCount != null) document.getElementById(t.statId).textContent = totalCount;
+      if (totalCount != null && statEl) statEl.textContent = totalCount;
       const { count: todayCount } = await supabaseClient.from(t.name).select('*', { count: 'exact', head: true }).eq('load_date', today);
-      if (todayCount != null) document.getElementById(t.metaId).textContent = `${todayCount} today`;
+      if (todayCount != null && metaEl) metaEl.textContent = `${todayCount} today`;
     } catch (e) {}
   }
 }
