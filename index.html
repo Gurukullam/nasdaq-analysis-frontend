@@ -918,7 +918,8 @@ const NASDAQ_ENDPOINTS = [
   { id: 'earnings', name: 'Earnings Forecast', path: '/api/analyst/{symbol}/earnings-forecast', description: 'Quarterly and yearly EPS consensus, high/low forecasts, estimate counts, and revisions', table: 'earnings_quarterly_forecast', status: 'active' },
   { id: 'earnings_surprise', name: 'Earnings Surprise', path: '/api/company/{symbol}/earnings-surprise', description: 'Historical EPS actuals vs consensus forecasts with surprise percentages', table: 'earnings_surprise', status: 'active' },
   { id: 'news', name: 'Company News', path: '/api/news/topic/articlebysymbol?q={symbol}|STOCKS&offset=0&limit=10&fallback=true', description: 'Latest news articles with headlines, summaries, authors, and publish dates', table: 'nasdaq_news', status: 'active' },
-  { id: 'symbol_dividends', name: 'Symbol Dividends', path: '/api/quote/{symbol}/dividends?assetclass=stocks', description: 'Dividend history for a symbol with ex-dates, amounts, and payment dates', table: 'nasdaq_symbol_dividends', status: 'active' }
+  { id: 'symbol_dividends', name: 'Symbol Dividends', path: '/api/quote/{symbol}/dividends?assetclass=stocks', description: 'Dividend history for a symbol with ex-dates, amounts, and payment dates', table: 'nasdaq_symbol_dividends', status: 'active' },
+  { id: 'insider_trades', name: 'Insider Trades', path: '/api/company/{symbol}/insider-trades', description: 'Insider trading activity with names, relations, transaction types, and share amounts', table: 'nasdaq_insider_trades', status: 'active' }
 ];
 
 let selectedAPIs = new Set(['screener']);
@@ -936,6 +937,7 @@ let earningsSurpriseMode = 'single';  // 'all' or 'single'
 let newsMode = 'single';  // 'all' or 'single'
 let institutionalMode = 'single';  // 'all' or 'single'
 let symbolDividendsMode = 'single';  // 'all' or 'single'
+let insiderTradesMode = 'single';  // 'all' or 'single'
 let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
 
 // ============================================================
@@ -1060,6 +1062,13 @@ function selectSymbolDividendsMode(el) {
   log(`Symbol Dividends mode: ${symbolDividendsMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
 }
 
+function selectInsiderTradesMode(el) {
+  insiderTradesMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Insider Trades mode: ${insiderTradesMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
 function cancelLoading() {
   cancelRequested = true;
   log('Cancel requested. Finishing current operation...', 'warn');
@@ -1182,6 +1191,17 @@ function discoverAPIs() {
         </span>
       </span>
     ` : '';
+    const insiderTradesInputHtml = api.id === 'insider_trades' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="insider-trades-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${insiderTradesMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="insider-trades-mode-chip ${insiderTradesMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectInsiderTradesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${insiderTradesMode === 'all' ? '#d4af37' : '#fff'};color:${insiderTradesMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="insider-trades-mode-chip ${insiderTradesMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectInsiderTradesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${insiderTradesMode === 'single' ? '#d4af37' : '#fff'};color:${insiderTradesMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
     const historicalInputHtml = api.id === 'historical' ? `
       <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
         <span style="color: #8b7355; font-size: 0.8rem;">From</span>
@@ -1206,7 +1226,7 @@ function discoverAPIs() {
       <div class="api-info">
         <span class="api-method">GET</span>
         <div>
-          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${institutionalInputHtml}${summaryInputHtml}${earningsInputHtml}${earningsSurpriseInputHtml}${newsInputHtml}${symbolDividendsInputHtml}</div>
+          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${institutionalInputHtml}${summaryInputHtml}${earningsInputHtml}${earningsSurpriseInputHtml}${newsInputHtml}${symbolDividendsInputHtml}${insiderTradesInputHtml}</div>
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
@@ -1226,7 +1246,7 @@ function discoverAPIs() {
     histTo.value = new Date().toISOString().split('T')[0];
   }
 
-  log('API discovery complete. 13 endpoints found.', 'success');
+  log('API discovery complete. 14 endpoints found.', 'success');
 }
 
 function toggleAPI(id, element) {
@@ -1385,6 +1405,7 @@ async function startLoading() {
       else if (api.id === 'earnings_surprise') data = await loadEarningsSurprise();
       else if (api.id === 'news') data = await loadNews();
       else if (api.id === 'symbol_dividends') data = await loadSymbolDividends();
+      else if (api.id === 'insider_trades') data = await loadInsiderTrades();
 
       if (api.id === 'financials' && data && data.income_statement) {
         const totalRows = data.income_statement.length + data.balance_sheet.length + data.cash_flow.length + data.financial_ratios.length;
@@ -1441,6 +1462,10 @@ async function startLoading() {
         showPreview(api.name, data.slice(0, 10));
         await insertToSupabase(api.table, data);
       } else if (api.id === 'symbol_dividends' && data && data.length > 0) {
+        log(`${api.name}: ${data.length} records fetched`, 'success');
+        showPreview(api.name, data.slice(0, 10));
+        await insertToSupabase(api.table, data);
+      } else if (api.id === 'insider_trades' && data && data.length > 0) {
         log(`${api.name}: ${data.length} records fetched`, 'success');
         showPreview(api.name, data.slice(0, 10));
         await insertToSupabase(api.table, data);
@@ -2801,6 +2826,127 @@ async function loadSymbolDividends() {
 }
 
 // ============================================================
+// Insider Trades Loader
+// ============================================================
+
+async function loadInsiderTrades() {
+  const toISODate = (val) => {
+    const s = (val || '').toString().trim();
+    if (!s) return null;
+    const parts = s.split('/');
+    if (parts.length === 3) {
+      const m = parts[0].padStart(2, '0');
+      const d = parts[1].padStart(2, '0');
+      const y = parts[2];
+      return `${y}-${m}-${d}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return null;
+  };
+
+  const cleanText = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().trim();
+    return s.length > 0 && s !== 'N/A' ? s : null;
+  };
+
+  const toBigInt = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--') return null;
+    const n = parseInt(cleaned, 10);
+    return isNaN(n) ? null : n;
+  };
+
+  const toPrice = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--') return null;
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? null : n;
+  };
+
+  const fetchSymbolTrades = async (symbol) => {
+    const path = `/api/company/${symbol}/insider-trades`;
+    const json = await fetchNasdaq(path);
+    const d = json?.data;
+    if (!d) return [];
+
+    const rows = d.transactionTable?.table?.rows || [];
+    const sym = symbol.toString().toUpperCase();
+    return rows.map(row => ({
+      symbol: sym,
+      insider_name: cleanText(row.insider),
+      relation: cleanText(row.relation),
+      last_date: toISODate(row.lastDate),
+      transaction_type: cleanText(row.transactionType),
+      owner_type: cleanText(row.ownType),
+      shares_traded: toBigInt(row.sharesTraded),
+      last_price: toPrice(row.lastPrice),
+      shares_held: toBigInt(row.sharesHeld),
+      insider_url: cleanText(row.url)
+    })).filter(r => r.insider_name !== null);
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (insiderTradesMode === 'single') {
+    const symbolInput = document.getElementById('insider-trades-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Insider Trades for ${symbol}`);
+    try {
+      const result = await fetchSymbolTrades(symbol);
+      log(`Insider Trades [${symbol}]: ${result.length} records fetched`, 'success');
+      return result;
+    } catch (err) {
+      log(`Insider Trades [${symbol}]: ${err.message}`, 'error');
+      return [];
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Insider Trades: Failed to fetch symbol list — ${e.message}`, 'error');
+    return [];
+  }
+
+  if (symbols.length === 0) {
+    log('Insider Trades: No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Insider Trades for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const rows = await fetchSymbolTrades(symbol);
+      if (rows && rows.length > 0) {
+        allRows.push(...rows);
+        return rows;
+      }
+      return [];
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Insider Trades',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Insider Trades ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Insider Trades: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
+}
+
+// ============================================================
 // Supabase Operations (with load_date)
 // ============================================================
 
@@ -2817,9 +2963,10 @@ async function insertToSupabase(table, rows) {
   const upsertNews = table === 'nasdaq_news';
   const upsertInstitutionalHoldings = table === 'nasdaq_institutional_holdings';
   const upsertSymbolDividends = table === 'nasdaq_symbol_dividends';
+  const upsertInsiderTrades = table === 'nasdaq_insider_trades';
   const financialTables = ['yearly_income_statement', 'yearly_balance_sheet', 'yearly_cash_flow', 'yearly_financial_ratios', 'quarterly_income_statement', 'quarterly_balance_sheet', 'quarterly_cash_flow', 'quarterly_financial_ratios', 'earnings_quarterly_forecast', 'earnings_yearly_forecast', 'earnings_surprise'];
   const isFinancial = financialTables.includes(table);
-  const useUpsert = upsertTables.includes(table) || upsertDividends || upsertHistorical || upsertNews || upsertInstitutionalHoldings || upsertSymbolDividends || isFinancial;
+  const useUpsert = upsertTables.includes(table) || upsertDividends || upsertHistorical || upsertNews || upsertInstitutionalHoldings || upsertSymbolDividends || upsertInsiderTrades || isFinancial;
 
   // Financial data = millions of rows → bigger batches + parallel concurrency
   const batchSize = isFinancial ? 1500 : 500;
@@ -2854,6 +3001,8 @@ async function insertToSupabase(table, rows) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,owner_name,report_date,load_date', ignoreDuplicates: false }));
       } else if (upsertSymbolDividends) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,ex_date,load_date', ignoreDuplicates: false }));
+      } else if (upsertInsiderTrades) {
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,insider_name,last_date,transaction_type,load_date', ignoreDuplicates: false }));
       } else if (isFinancial) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,period_ending,line_item', ignoreDuplicates: false }));
       } else if (useUpsert) {
@@ -2881,6 +3030,8 @@ async function insertToSupabase(table, rows) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,owner_name,report_date,load_date', ignoreDuplicates: false }));
               } else if (upsertSymbolDividends) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,ex_date,load_date', ignoreDuplicates: false }));
+              } else if (upsertInsiderTrades) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,insider_name,last_date,transaction_type,load_date', ignoreDuplicates: false }));
               } else if (useUpsert) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
               } else {
@@ -2946,7 +3097,8 @@ async function updateStats() {
     { name: 'earnings_surprise', statId: 'stat-es', metaId: 'meta-es' },
     { name: 'nasdaq_news', statId: 'stat-news', metaId: 'meta-news' },
     { name: 'nasdaq_institutional_holdings', statId: 'stat-ih', metaId: 'meta-ih' },
-    { name: 'nasdaq_symbol_dividends', statId: 'stat-sd', metaId: 'meta-sd' }
+    { name: 'nasdaq_symbol_dividends', statId: 'stat-sd', metaId: 'meta-sd' },
+    { name: 'nasdaq_insider_trades', statId: 'stat-it', metaId: 'meta-it' }
   ];
   const today = getUSLoadDate();
   for (const t of tables) {
