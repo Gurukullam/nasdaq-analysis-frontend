@@ -913,6 +913,7 @@ const NASDAQ_ENDPOINTS = [
   { id: 'historical', name: 'Historical Prices', path: '/api/quote/{symbol}/historical', description: 'Daily OHLCV price history for a symbol', table: 'nasdaq_historical', status: 'active' },
   { id: 'financials', name: 'Yearly Financials', path: '/api/company/{symbol}/financials?frequency=1', description: 'Income Statement, Balance Sheet, Cash Flow, and Financial Ratios (annual)', table: 'yearly_income_statement', status: 'active' },
   { id: 'quarterly_financials', name: 'Quarterly Financials', path: '/api/company/{symbol}/financials?frequency=2', description: 'Quarterly Income Statement, Balance Sheet, Cash Flow, and Financial Ratios', table: 'quarterly_income_statement', status: 'active' },
+  { id: 'institutional_holdings', name: 'Institutional Holdings', path: '/api/company/{symbol}/institutional-holdings', description: 'Institutional ownership details, holder positions, and share changes', table: 'nasdaq_institutional_holdings', status: 'active' },
   { id: 'summary', name: 'Quote Summary', path: '/api/quote/{symbol}/summary?assetclass=stocks', description: 'Key stats: sector, industry, market cap, volume, yield, bid/ask', table: 'nasdaq_summary', status: 'active' },
   { id: 'earnings', name: 'Earnings Forecast', path: '/api/analyst/{symbol}/earnings-forecast', description: 'Quarterly and yearly EPS consensus, high/low forecasts, estimate counts, and revisions', table: 'earnings_quarterly_forecast', status: 'active' },
   { id: 'earnings_surprise', name: 'Earnings Surprise', path: '/api/company/{symbol}/earnings-surprise', description: 'Historical EPS actuals vs consensus forecasts with surprise percentages', table: 'earnings_surprise', status: 'active' },
@@ -932,6 +933,7 @@ let summaryMode = 'single';  // 'all' or 'single'
 let earningsMode = 'single';  // 'all' or 'single'
 let earningsSurpriseMode = 'single';  // 'all' or 'single'
 let newsMode = 'single';  // 'all' or 'single'
+let institutionalMode = 'single';  // 'all' or 'single'
 let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
 
 // ============================================================
@@ -1042,6 +1044,13 @@ function selectNewsMode(el) {
   log(`Company News mode: ${newsMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
 }
 
+function selectInstitutionalMode(el) {
+  institutionalMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Institutional Holdings mode: ${institutionalMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
 function cancelLoading() {
   cancelRequested = true;
   log('Cancel requested. Finishing current operation...', 'warn');
@@ -1095,6 +1104,17 @@ function discoverAPIs() {
         <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
           <span class="qfin-mode-chip ${quarterlyMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectQuarterlyMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${quarterlyMode === 'all' ? '#d4af37' : '#fff'};color:${quarterlyMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
           <span class="qfin-mode-chip ${quarterlyMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectQuarterlyMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${quarterlyMode === 'single' ? '#d4af37' : '#fff'};color:${quarterlyMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
+    const institutionalInputHtml = api.id === 'institutional_holdings' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="institutional-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${institutionalMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="institutional-mode-chip ${institutionalMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectInstitutionalMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${institutionalMode === 'all' ? '#d4af37' : '#fff'};color:${institutionalMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="institutional-mode-chip ${institutionalMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectInstitutionalMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${institutionalMode === 'single' ? '#d4af37' : '#fff'};color:${institutionalMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
         </span>
       </span>
     ` : '';
@@ -1166,7 +1186,7 @@ function discoverAPIs() {
       <div class="api-info">
         <span class="api-method">GET</span>
         <div>
-          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${summaryInputHtml}${earningsInputHtml}${earningsSurpriseInputHtml}${newsInputHtml}</div>
+          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${institutionalInputHtml}${summaryInputHtml}${earningsInputHtml}${earningsSurpriseInputHtml}${newsInputHtml}</div>
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
@@ -1186,7 +1206,7 @@ function discoverAPIs() {
     histTo.value = new Date().toISOString().split('T')[0];
   }
 
-  log('API discovery complete. 11 endpoints found.', 'success');
+  log('API discovery complete. 12 endpoints found.', 'success');
 }
 
 function toggleAPI(id, element) {
@@ -1339,6 +1359,7 @@ async function startLoading() {
       else if (api.id === 'historical') data = await loadHistorical();
       else if (api.id === 'financials') data = await loadFinancials();
       else if (api.id === 'quarterly_financials') data = await loadQuarterlyFinancials();
+      else if (api.id === 'institutional_holdings') data = await loadInstitutionalHoldings();
       else if (api.id === 'summary') data = await loadSummary();
       else if (api.id === 'earnings') data = await loadEarnings();
       else if (api.id === 'earnings_surprise') data = await loadEarningsSurprise();
@@ -1391,6 +1412,10 @@ async function startLoading() {
           log(`${api.name}: No data returned`, 'warn');
         }
       } else if (api.id === 'earnings_surprise' && data && data.length > 0) {
+        log(`${api.name}: ${data.length} records fetched`, 'success');
+        showPreview(api.name, data.slice(0, 10));
+        await insertToSupabase(api.table, data);
+      } else if (api.id === 'institutional_holdings' && data && data.length > 0) {
         log(`${api.name}: ${data.length} records fetched`, 'success');
         showPreview(api.name, data.slice(0, 10));
         await insertToSupabase(api.table, data);
@@ -2130,6 +2155,117 @@ async function loadQuarterlyFinancials() {
 }
 
 // ============================================================
+// Institutional Holdings Loader
+// ============================================================
+
+async function loadInstitutionalHoldings() {
+  const toISODate = (val) => {
+    const s = (val || '').toString().trim();
+    if (!s) return null;
+    const parts = s.split('/');
+    if (parts.length === 3) {
+      const m = parts[0].padStart(2, '0');
+      const d = parts[1].padStart(2, '0');
+      const y = parts[2];
+      return `${y}-${m}-${d}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return null;
+  };
+
+  const toBigInt = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--') return null;
+    const n = parseInt(cleaned, 10);
+    return isNaN(n) ? null : n;
+  };
+
+  const cleanText = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().trim();
+    return s.length > 0 && s !== 'N/A' ? s : null;
+  };
+
+  const fetchSymbolHoldings = async (symbol) => {
+    const path = `/api/company/${symbol}/institutional-holdings`;
+    const json = await fetchNasdaq(path);
+    const d = json?.data;
+    if (!d) return [];
+
+    const holdings = d.holdingsTransactions?.table?.rows || [];
+    const sym = symbol.toString().toUpperCase();
+    return holdings.map(row => ({
+      symbol: sym,
+      owner_name: cleanText(row.ownerName),
+      report_date: toISODate(row.date),
+      shares_held: toBigInt(row.sharesHeld),
+      shares_change: toBigInt(row.sharesChange),
+      shares_change_pct: cleanText(row.sharesChangePCT),
+      market_value: toBigInt(row.marketValue),
+      owner_url: cleanText(row.url)
+    })).filter(r => r.owner_name !== null);
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (institutionalMode === 'single') {
+    const symbolInput = document.getElementById('institutional-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Institutional Holdings for ${symbol}`);
+    try {
+      const result = await fetchSymbolHoldings(symbol);
+      log(`Institutional Holdings [${symbol}]: ${result.length} records fetched`, 'success');
+      return result;
+    } catch (err) {
+      log(`Institutional Holdings [${symbol}]: ${err.message}`, 'error');
+      return [];
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Institutional Holdings: Failed to fetch symbol list — ${e.message}`, 'error');
+    return [];
+  }
+
+  if (symbols.length === 0) {
+    log('Institutional Holdings: No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Institutional Holdings for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const rows = await fetchSymbolHoldings(symbol);
+      if (rows && rows.length > 0) {
+        allRows.push(...rows);
+        return rows;
+      }
+      return [];
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Institutional Holdings',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Institutional Holdings ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Institutional Holdings: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
+}
+
+// ============================================================
 // Quote Summary Loader
 // ============================================================
 
@@ -2578,6 +2714,8 @@ async function insertToSupabase(table, rows) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,fiscal_quarter_end,load_date', ignoreDuplicates: false }));
       } else if (upsertNews) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,article_id,load_date', ignoreDuplicates: false }));
+      } else if (table === 'nasdaq_institutional_holdings') {
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,owner_name,report_date,load_date', ignoreDuplicates: false }));
       } else if (isFinancial) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,period_ending,line_item', ignoreDuplicates: false }));
       } else if (useUpsert) {
@@ -2748,7 +2886,7 @@ discoverAPIs();
 updateQuoteEstimate();
 document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
 log('NASDAQ Analysis AI — Phase 2 initialized. Full record fetch enabled.', 'success');
-log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131 | Historical: new | Financials: new | Quarterly: new | Summary: new | News: new', 'info');
+log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131 | Historical: new | Financials: new | Quarterly: new | Institutional: new | Summary: new | News: new', 'info');
 </script>
 
 </body>
