@@ -592,10 +592,16 @@
     padding: 16px;
     font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
     font-size: 0.8rem;
-    max-height: 240px;
+    max-height: 320px;
     overflow-y: auto;
     margin-top: 16px;
     color: #d4af37;
+    transition: var(--transition);
+    scroll-margin-top: 100px;
+  }
+  .log-container.active-log {
+    border-color: #d4af37;
+    box-shadow: 0 0 20px rgba(212, 175, 55, 0.2);
   }
 
   .log-entry {
@@ -741,6 +747,27 @@
     border: 1px solid rgba(139, 69, 19, 0.2);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+
+  .btn-download {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 6px 14px;
+    border-radius: 100px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+  }
+  .btn-download:hover {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-download:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -963,6 +990,9 @@ function log(msg, type = 'info') {
   const cls = type === 'success' ? 'log-success' : type === 'error' ? 'log-error' : type === 'warn' ? 'log-warn' : 'log-info';
   container.innerHTML += `<div class="log-entry"><span class="log-time">${time}</span><span class="${cls}">${msg}</span></div>`;
   container.scrollTop = container.scrollHeight;
+  if (container.classList.contains('active-log')) {
+    container.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
 }
 
 function setProgress(pct, label) {
@@ -974,6 +1004,19 @@ function setProgress(pct, label) {
 function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('active'); }
 function toggleAuto() { document.getElementById('autoToggle').classList.toggle('active'); }
 function isAutoLoad() { return document.getElementById('autoToggle').classList.contains('active'); }
+
+function scrollToLog() {
+  const logContainer = document.getElementById('logContainer');
+  logContainer.classList.add('active-log');
+  logContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => logContainer.classList.remove('active-log'), 3000);
+}
+
+function focusLog() {
+  const logContainer = document.getElementById('logContainer');
+  logContainer.classList.add('active-log');
+  logContainer.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
 
 function selectExchange(el) {
   document.querySelectorAll('.exchange-chip').forEach(c => c.classList.remove('selected'));
@@ -1250,7 +1293,10 @@ function discoverAPIs() {
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
       <span class="api-status ${api.status === 'active' ? 'status-active' : 'status-pending'}">${api.status}</span>
+      <button class="btn-download" onclick="event.stopPropagation(); downloadAPI('${api.id}')" title="Download as CSV">⬇️ CSV</button>
+    </div>
     `;
     list.appendChild(item);
   });
@@ -1381,6 +1427,7 @@ async function startLoading() {
   if (selectedAPIs.size === 0) { log('No APIs selected. Click Discover APIs first.', 'error'); return; }
   const backend = getBackendUrl();
   if (!backend) { log('Backend URL missing. Open Settings and paste your Vercel deployment URL.', 'error'); document.getElementById('settingsPanel').classList.add('active'); return; }
+  scrollToLog();
 
   isLoading = true;
   cancelRequested = false;
@@ -1514,6 +1561,7 @@ async function startLoading() {
   status.textContent = 'Complete!';
   log('All selected APIs processed.', 'success');
   await updateStats();
+  document.getElementById('logContainer').classList.remove('active-log');
 
   btn.disabled = false;
   btn.textContent = '▶️ Load Data';
@@ -3325,6 +3373,246 @@ async function updateStats() {
       if (todayCount != null && metaEl) metaEl.textContent = `${todayCount} today`;
     } catch (e) {}
   }
+}
+
+
+// ============================================================
+// CSV Download Helpers
+// ============================================================
+
+function escapeCSV(val) {
+  if (val === null || val === undefined) return '';
+  const str = String(val);
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+function generateCSVFiles(data, tableName, maxBytes = 5 * 1024 * 1024) {
+  if (!data || data.length === 0) return [];
+  const headers = Object.keys(data[0]);
+  const headerLine = headers.map(escapeCSV).join(',');
+  const encoder = new TextEncoder();
+
+  const files = [];
+  let currentRows = [];
+  let currentSize = encoder.encode(headerLine + '\n').length;
+
+  for (const row of data) {
+    const line = headers.map(h => escapeCSV(row[h])).join(',');
+    const lineWithNL = line + '\n';
+    const lineSize = encoder.encode(lineWithNL).length;
+
+    if (currentSize + lineSize > maxBytes && currentRows.length > 0) {
+      const content = headerLine + '\n' + currentRows.join('\n');
+      files.push({ name: `${tableName}_1_${files.length + 1}.csv`, content });
+      currentRows = [line];
+      currentSize = encoder.encode(headerLine + '\n' + lineWithNL).length;
+    } else {
+      currentRows.push(line);
+      currentSize += lineSize;
+    }
+  }
+
+  if (currentRows.length > 0) {
+    const content = headerLine + '\n' + currentRows.join('\n');
+    files.push({ name: `${tableName}_1_${files.length + 1}.csv`, content });
+  }
+
+  return files;
+}
+
+function getTablesForAPI(apiId) {
+  switch (apiId) {
+    case 'screener': return ['nasdaq_stocks'];
+    case 'quotes': return ['nasdaq_quotes'];
+    case 'ipos': return ['nasdaq_ipos'];
+    case 'dividends': return ['nasdaq_dividends'];
+    case 'historical': return ['nasdaq_historical'];
+    case 'financials': return ['yearly_income_statement', 'yearly_balance_sheet', 'yearly_cash_flow', 'yearly_financial_ratios'];
+    case 'quarterly_financials': return ['quarterly_income_statement', 'quarterly_balance_sheet', 'quarterly_cash_flow', 'quarterly_financial_ratios'];
+    case 'institutional_holdings': return ['nasdaq_institutional_holdings'];
+    case 'summary': return ['nasdaq_summary'];
+    case 'earnings': return ['earnings_quarterly_forecast', 'earnings_yearly_forecast'];
+    case 'earnings_surprise': return ['earnings_surprise'];
+    case 'news': return ['nasdaq_news'];
+    case 'symbol_dividends': return ['nasdaq_symbol_dividends'];
+    case 'insider_trades': return ['nasdaq_insider_trades'];
+    case 'option_chain': return ['nasdaq_option_chain'];
+    default: return [];
+  }
+}
+
+async function fetchAndUpsertAPI(api) {
+  let data;
+  if (api.id === 'screener') data = await loadScreener();
+  else if (api.id === 'quotes') data = await loadQuotes();
+  else if (api.id === 'ipos') data = await loadIPOs();
+  else if (api.id === 'dividends') data = await loadDividends();
+  else if (api.id === 'historical') data = await loadHistorical();
+  else if (api.id === 'financials') data = await loadFinancials();
+  else if (api.id === 'quarterly_financials') data = await loadQuarterlyFinancials();
+  else if (api.id === 'institutional_holdings') data = await loadInstitutionalHoldings();
+  else if (api.id === 'summary') data = await loadSummary();
+  else if (api.id === 'earnings') data = await loadEarnings();
+  else if (api.id === 'earnings_surprise') data = await loadEarningsSurprise();
+  else if (api.id === 'news') data = await loadNews();
+  else if (api.id === 'symbol_dividends') data = await loadSymbolDividends();
+  else if (api.id === 'insider_trades') data = await loadInsiderTrades();
+  else if (api.id === 'option_chain') data = await loadOptionChain();
+
+  if (api.id === 'financials' && data && data.income_statement) {
+    const totalRows = data.income_statement.length + data.balance_sheet.length + data.cash_flow.length + data.financial_ratios.length;
+    if (totalRows > 0) {
+      await Promise.all([
+        insertToSupabase('yearly_income_statement', data.income_statement),
+        insertToSupabase('yearly_balance_sheet', data.balance_sheet),
+        insertToSupabase('yearly_cash_flow', data.cash_flow),
+        insertToSupabase('yearly_financial_ratios', data.financial_ratios)
+      ]);
+    }
+  } else if (api.id === 'quarterly_financials' && data && data.income_statement) {
+    const totalRows = data.income_statement.length + data.balance_sheet.length + data.cash_flow.length + data.financial_ratios.length;
+    if (totalRows > 0) {
+      await Promise.all([
+        insertToSupabase('quarterly_income_statement', data.income_statement),
+        insertToSupabase('quarterly_balance_sheet', data.balance_sheet),
+        insertToSupabase('quarterly_cash_flow', data.cash_flow),
+        insertToSupabase('quarterly_financial_ratios', data.financial_ratios)
+      ]);
+    }
+  } else if (api.id === 'earnings' && data && data.quarterly) {
+    const totalRows = data.quarterly.length + data.yearly.length;
+    if (totalRows > 0) {
+      await Promise.all([
+        insertToSupabase('earnings_quarterly_forecast', data.quarterly),
+        insertToSupabase('earnings_yearly_forecast', data.yearly)
+      ]);
+    }
+  } else if (api.id === 'summary' && data && data.length > 0) {
+    await insertToSupabase(api.table, data);
+  } else if (api.id === 'earnings_surprise' && data && data.length > 0) {
+    await insertToSupabase(api.table, data);
+  } else if (api.id === 'institutional_holdings' && data && data.length > 0) {
+    await insertToSupabase(api.table, data);
+  } else if (api.id === 'symbol_dividends' && data && data.length > 0) {
+    await insertToSupabase(api.table, data);
+  } else if (api.id === 'insider_trades' && data && data.length > 0) {
+    await insertToSupabase(api.table, data);
+  } else if (api.id === 'option_chain' && data && data.length > 0) {
+    await insertToSupabase(api.table, data);
+  } else if (data && data.length > 0) {
+    await insertToSupabase(api.table, data);
+  }
+
+  return data;
+}
+
+async function downloadTableAsCSV(tableName, loadDate) {
+  if (!supabaseClient) {
+    log('Supabase not initialized', 'error');
+    return;
+  }
+
+  log(`Querying ${tableName} for ${loadDate}...`);
+  const { data, error } = await supabaseClient.from(tableName).select('*').eq('load_date', loadDate);
+  if (error) {
+    log(`Error querying ${tableName}: ${error.message}`, 'error');
+    return;
+  }
+  if (!data || data.length === 0) {
+    log(`No data in ${tableName} for ${loadDate}`, 'warn');
+    return;
+  }
+
+  const files = generateCSVFiles(data, tableName);
+  const encoder = new TextEncoder();
+  const totalSize = files.reduce((sum, f) => sum + encoder.encode(f.content).length, 0);
+  const sizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+
+  log(`${tableName}: ${data.length} rows · ${sizeMB} MB · ${files.length} file(s) to download`, 'info');
+
+  await new Promise(r => setTimeout(r, 300));
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const blob = new Blob([file.content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (i < files.length - 1) await new Promise(r => setTimeout(r, 150));
+  }
+
+  log(`Downloaded ${files.length} file(s) for ${tableName}`, 'success');
+}
+
+async function downloadAPI(apiId) {
+  if (isLoading) {
+    log('Another operation is in progress. Please wait.', 'warn');
+    return;
+  }
+  const backend = getBackendUrl();
+  if (!backend) {
+    log('Backend URL missing. Open Settings and paste your Vercel deployment URL.', 'error');
+    document.getElementById('settingsPanel').classList.add('active');
+    return;
+  }
+  focusLog();
+
+  const api = NASDAQ_ENDPOINTS.find(a => a.id === apiId);
+  if (!api) return;
+
+  isLoading = true;
+  cancelRequested = false;
+
+  const progress = document.getElementById('progressContainer');
+  const fill = document.getElementById('progressFill');
+  const status = document.getElementById('progressStatus');
+  const percent = document.getElementById('progressPercent');
+  progress.classList.add('active');
+  document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
+
+  log(`Download flow started for ${api.name}...`);
+
+  const hasSupabase = initSupabase();
+  if (!hasSupabase) {
+    isLoading = false;
+    progress.classList.remove('active');
+    return;
+  }
+
+  try {
+    status.textContent = `Fetching ${api.name}...`;
+    await fetchAndUpsertAPI(api);
+
+    const loadDate = getUSLoadDate();
+    const tables = getTablesForAPI(api.id);
+
+    for (let i = 0; i < tables.length; i++) {
+      const tableName = tables[i];
+      const pct = Math.round(((i + 1) / (tables.length + 1)) * 100);
+      fill.style.width = pct + '%';
+      percent.textContent = pct + '%';
+      status.textContent = `Downloading ${tableName}...`;
+      await downloadTableAsCSV(tableName, loadDate);
+    }
+
+    fill.style.width = '100%';
+    percent.textContent = '100%';
+    status.textContent = 'Download complete!';
+    log(`Download flow complete for ${api.name}`, 'success');
+  } catch (e) {
+    log(`Download flow failed: ${e.message}`, 'error');
+  }
+
+  document.getElementById('logContainer').classList.remove('active-log');
+  isLoading = false;
 }
 
 // ============================================================
