@@ -1659,23 +1659,35 @@ async function loadBasicQuotes() {
     const d = json?.data;
     if (!d) return null;
 
+    // NASDAQ basic quote may return fields flat or nested in primaryData
+    const pd = d.primaryData || {};
+
+    // Helper: try multiple possible field paths
+    const getVal = (...keys) => {
+      for (const k of keys) {
+        if (d[k] !== undefined && d[k] !== null && d[k] !== '') return d[k];
+        if (pd[k] !== undefined && pd[k] !== null && pd[k] !== '') return pd[k];
+      }
+      return null;
+    };
+
     return {
-      symbol: d.symbol || symbol,
-      company_name: cleanText(d.companyName),
-      stock_type: cleanText(d.stockType),
-      exchange: cleanText(d.exchange),
-      last_sale_price: toPrice(d.lastSalePrice),
-      net_change: toPrice(d.netChange),
-      percentage_change: cleanText(d.percentageChange),
-      delta_indicator: cleanText(d.deltaIndicator),
-      open_price: toPrice(d.openPrice),
-      high_price: toPrice(d.highPrice),
-      low_price: toPrice(d.lowPrice),
-      previous_close: toPrice(d.previousClosePrice),
-      volume: toBigInt(d.volume),
-      market_status: cleanText(d.marketStatus),
-      fifty_two_week_range: cleanText(d.fiftyTwoWeekHighLow),
-      last_trade_timestamp: cleanText(d.lastTradeTimestamp)
+      symbol: getVal('symbol') || symbol,
+      company_name: cleanText(getVal('companyName')),
+      stock_type: cleanText(getVal('stockType')),
+      exchange: cleanText(getVal('exchange')),
+      last_sale_price: toPrice(getVal('lastSalePrice')),
+      net_change: toPrice(getVal('netChange')),
+      percentage_change: cleanText(getVal('percentageChange')),
+      delta_indicator: cleanText(getVal('deltaIndicator')),
+      open_price: toPrice(getVal('openPrice')),
+      high_price: toPrice(getVal('highPrice')),
+      low_price: toPrice(getVal('lowPrice')),
+      previous_close: toPrice(getVal('previousClosePrice', 'previousClose')),
+      volume: toBigInt(getVal('volume')),
+      market_status: cleanText(getVal('marketStatus')),
+      fifty_two_week_range: cleanText(getVal('fiftyTwoWeekHighLow')),
+      last_trade_timestamp: cleanText(getVal('lastTradeTimestamp'))
     };
   };
 
