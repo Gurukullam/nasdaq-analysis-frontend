@@ -934,6 +934,7 @@
 
 const NASDAQ_ENDPOINTS = [
   { id: 'screener', name: 'Stock Screener', path: '/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq', description: 'List all stocks with price, change, market cap — FULL UNIVERSE', table: 'nasdaq_stocks', status: 'active' },
+  { id: 'basic_quotes', name: 'Current Quote (Basic)', path: '/api/quote/basic?&symbol={symbol}|stocks', description: 'Basic quote data with price, change, volume, open/high/low, and previous close', table: 'nasdaq_basic_quotes', status: 'active' },
   { id: 'quotes', name: 'Quote Info', path: '/api/quote/{symbol}/info?assetclass=stocks', description: 'Detailed quote data for individual symbols', table: 'nasdaq_quotes', status: 'active' },
   { id: 'ipos', name: 'IPO Calendar', path: '/api/ipo/calendar', description: 'Upcoming IPOs with pricing and dates', table: 'nasdaq_ipos', status: 'active' },
   { id: 'dividends', name: 'Dividend Calendar', path: '/api/calendar/dividends', description: 'Dividend events with ex-dates and payment dates', table: 'nasdaq_dividends', status: 'active' },
@@ -967,6 +968,7 @@ let institutionalMode = 'single';  // 'all' or 'single'
 let symbolDividendsMode = 'single';  // 'all' or 'single'
 let insiderTradesMode = 'single';  // 'all' or 'single'
 let optionChainMode = 'single';  // 'all' or 'single'
+let basicQuotesMode = 'single';  // 'all' or 'single'
 let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
 
 // ============================================================
@@ -1121,6 +1123,13 @@ function selectOptionChainMode(el) {
   log(`Option Chain mode: ${optionChainMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
 }
 
+function selectBasicQuotesMode(el) {
+  basicQuotesMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Current Quote (Basic) mode: ${basicQuotesMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
 function cancelLoading() {
   cancelRequested = true;
   log('Cancel requested. Finishing current operation...', 'warn');
@@ -1265,6 +1274,17 @@ function discoverAPIs() {
         </span>
       </span>
     ` : '';
+    const basicQuotesInputHtml = api.id === 'basic_quotes' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="basic-quotes-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${basicQuotesMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="basic-quotes-mode-chip ${basicQuotesMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectBasicQuotesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${basicQuotesMode === 'all' ? '#d4af37' : '#fff'};color:${basicQuotesMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="basic-quotes-mode-chip ${basicQuotesMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectBasicQuotesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${basicQuotesMode === 'single' ? '#d4af37' : '#fff'};color:${basicQuotesMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
     const historicalInputHtml = api.id === 'historical' ? `
       <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
         <span style="color: #8b7355; font-size: 0.8rem;">From</span>
@@ -1289,7 +1309,7 @@ function discoverAPIs() {
       <div class="api-info">
         <span class="api-method">GET</span>
         <div>
-          <div class="api-name">${api.name}${daysInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${institutionalInputHtml}${summaryInputHtml}${earningsInputHtml}${earningsSurpriseInputHtml}${newsInputHtml}${symbolDividendsInputHtml}${insiderTradesInputHtml}${optionChainInputHtml}</div>
+          <div class="api-name">${api.name}${daysInputHtml}${basicQuotesInputHtml}${historicalInputHtml}${financialInputHtml}${quarterlyInputHtml}${institutionalInputHtml}${summaryInputHtml}${earningsInputHtml}${earningsSurpriseInputHtml}${newsInputHtml}${symbolDividendsInputHtml}${insiderTradesInputHtml}${optionChainInputHtml}</div>
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
@@ -1460,6 +1480,7 @@ async function startLoading() {
     try {
       let data;
       if (api.id === 'screener') data = await loadScreener();
+      else if (api.id === 'basic_quotes') data = await loadBasicQuotes();
       else if (api.id === 'quotes') data = await loadQuotes();
       else if (api.id === 'ipos') data = await loadIPOs();
       else if (api.id === 'dividends') data = await loadDividends();
@@ -1541,6 +1562,10 @@ async function startLoading() {
         log(`${api.name}: ${data.length} records fetched`, 'success');
         showPreview(api.name, data.slice(0, 10));
         await insertToSupabase(api.table, data);
+      } else if (api.id === 'basic_quotes' && data && data.length > 0) {
+        log(`${api.name}: ${data.length} records fetched`, 'success');
+        showPreview(api.name, data.slice(0, 10));
+        await insertToSupabase(api.table, data);
       } else if (data && data.length > 0) {
         log(`${api.name}: ${data.length} records fetched`, 'success');
         showPreview(api.name, data.slice(0, 10));
@@ -1599,6 +1624,122 @@ async function loadScreener() {
   setProgress(20, `Preparing ${mapped.length} stocks for insert...`);
   return mapped;
 }
+
+
+// ============================================================
+// Current Quote (Basic) Loader
+// ============================================================
+
+async function loadBasicQuotes() {
+  const cleanText = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().trim();
+    return s.length > 0 && s !== 'N/A' ? s : null;
+  };
+
+  const toPrice = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--') return null;
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? null : n;
+  };
+
+  const toBigInt = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--') return null;
+    const n = parseInt(cleaned, 10);
+    return isNaN(n) ? null : n;
+  };
+
+  const fetchSymbolBasic = async (symbol) => {
+    const path = `/api/quote/basic?&symbol=${encodeURIComponent(symbol)}|stocks`;
+    const json = await fetchNasdaq(path);
+    const d = json?.data;
+    if (!d) return null;
+
+    return {
+      symbol: d.symbol || symbol,
+      company_name: cleanText(d.companyName),
+      stock_type: cleanText(d.stockType),
+      exchange: cleanText(d.exchange),
+      last_sale_price: toPrice(d.lastSalePrice),
+      net_change: toPrice(d.netChange),
+      percentage_change: cleanText(d.percentageChange),
+      delta_indicator: cleanText(d.deltaIndicator),
+      open_price: toPrice(d.openPrice),
+      high_price: toPrice(d.highPrice),
+      low_price: toPrice(d.lowPrice),
+      previous_close: toPrice(d.previousClosePrice),
+      volume: toBigInt(d.volume),
+      market_status: cleanText(d.marketStatus),
+      fifty_two_week_range: cleanText(d.fiftyTwoWeekHighLow),
+      last_trade_timestamp: cleanText(d.lastTradeTimestamp)
+    };
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (basicQuotesMode === 'single') {
+    const symbolInput = document.getElementById('basic-quotes-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Current Quote (Basic) for ${symbol}`);
+    try {
+      const result = await fetchSymbolBasic(symbol);
+      if (result) {
+        log(`Current Quote (Basic) [${symbol}]: 1 record fetched`, 'success');
+        return [result];
+      }
+      return [];
+    } catch (err) {
+      log(`Current Quote (Basic) [${symbol}]: ${err.message}`, 'error');
+      return [];
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Current Quote (Basic): Failed to fetch symbol list — ${e.message}`, 'error');
+    return [];
+  }
+
+  if (symbols.length === 0) {
+    log('Current Quote (Basic): No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Current Quote (Basic) for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const result = await fetchSymbolBasic(symbol);
+      if (result) {
+        allRows.push(result);
+        return result;
+      }
+      return null;
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Current Quote (Basic)',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Current Quote (Basic) ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Current Quote (Basic): ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
+}
+
 
 async function loadQuotes() {
   const loadDate = getUSLoadDate();
@@ -3211,7 +3352,7 @@ async function insertToSupabase(table, rows) {
   rows.forEach(r => r.load_date = loadDate);
   const rowsWithDate = rows;
 
-  const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes', 'nasdaq_summary'];
+  const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes', 'nasdaq_summary', 'nasdaq_basic_quotes'];
   const upsertDividends = table === 'nasdaq_dividends';
   const upsertHistorical = table === 'nasdaq_historical';
   const upsertNews = table === 'nasdaq_news';
@@ -3338,6 +3479,7 @@ async function updateStats() {
   if (!supabaseClient) return;
   const tables = [
     { name: 'nasdaq_stocks', statId: 'stat-stocks', metaId: 'meta-stocks' },
+    { name: 'nasdaq_basic_quotes', statId: 'stat-basic', metaId: 'meta-basic' },
     { name: 'nasdaq_quotes', statId: 'stat-quotes', metaId: 'meta-quotes' },
     { name: 'nasdaq_ipos', statId: 'stat-ipos', metaId: 'meta-ipos' },
     { name: 'nasdaq_dividends', statId: 'stat-dividends', metaId: 'meta-dividends' },
@@ -3426,6 +3568,7 @@ function generateCSVFiles(data, tableName, maxBytes = 5 * 1024 * 1024) {
 function getTablesForAPI(apiId) {
   switch (apiId) {
     case 'screener': return ['nasdaq_stocks'];
+    case 'basic_quotes': return ['nasdaq_basic_quotes'];
     case 'quotes': return ['nasdaq_quotes'];
     case 'ipos': return ['nasdaq_ipos'];
     case 'dividends': return ['nasdaq_dividends'];
@@ -3447,6 +3590,7 @@ function getTablesForAPI(apiId) {
 async function fetchAndUpsertAPI(api) {
   let data;
   if (api.id === 'screener') data = await loadScreener();
+  else if (api.id === 'basic_quotes') data = await loadBasicQuotes();
   else if (api.id === 'quotes') data = await loadQuotes();
   else if (api.id === 'ipos') data = await loadIPOs();
   else if (api.id === 'dividends') data = await loadDividends();
@@ -3501,6 +3645,8 @@ async function fetchAndUpsertAPI(api) {
   } else if (api.id === 'insider_trades' && data && data.length > 0) {
     await insertToSupabase(api.table, data);
   } else if (api.id === 'option_chain' && data && data.length > 0) {
+    await insertToSupabase(api.table, data);
+  } else if (api.id === 'basic_quotes' && data && data.length > 0) {
     await insertToSupabase(api.table, data);
   } else if (data && data.length > 0) {
     await insertToSupabase(api.table, data);
