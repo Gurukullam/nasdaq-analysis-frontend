@@ -1634,13 +1634,13 @@ async function loadBasicQuotes() {
   const cleanText = (val) => {
     if (val === null || val === undefined) return null;
     const s = val.toString().trim();
-    return s.length > 0 && s !== 'N/A' ? s : null;
+    return s.length > 0 && s !== 'N/A' && s !== 'n/a' ? s : null;
   };
 
   const toPrice = (val) => {
     if (val === null || val === undefined) return null;
     const cleaned = val.toString().replace(/[$,]/g, '').trim();
-    if (cleaned === '' || cleaned === '--') return null;
+    if (cleaned === '' || cleaned === '--' || cleaned === '-') return null;
     const n = parseFloat(cleaned);
     return isNaN(n) ? null : n;
   };
@@ -1648,13 +1648,48 @@ async function loadBasicQuotes() {
   const toBigInt = (val) => {
     if (val === null || val === undefined) return null;
     const cleaned = val.toString().replace(/[$,]/g, '').trim();
-    if (cleaned === '' || cleaned === '--') return null;
+    if (cleaned === '' || cleaned === '--' || cleaned === '-') return null;
     const n = parseInt(cleaned, 10);
     return isNaN(n) ? null : n;
   };
 
+  // Deep-search any value inside an object tree (including arrays)
+  const deepFind = (obj, keys) => {
+    if (obj === null || obj === undefined) return undefined;
+    if (typeof obj !== 'object') return undefined;
+    // Direct match
+    for (const k of keys) {
+      if (k in obj && obj[k] !== null && obj[k] !== undefined && obj[k] !== '') {
+        return obj[k];
+      }
+    }
+    // Recursive search in values
+    for (const v of Object.values(obj)) {
+      if (v && typeof v === 'object') {
+        const found = deepFind(v, keys);
+        if (found !== undefined) return found;
+      }
+    }
+    return undefined;
+  };
+
+  // Collect every key found anywhere in the response (for diagnostics)
+  const collectAllKeys = (obj, keys = new Set()) => {
+    if (obj === null || obj === undefined) return keys;
+    if (typeof obj !== 'object') return keys;
+    if (Array.isArray(obj)) {
+      for (const item of obj) collectAllKeys(item, keys);
+      return keys;
+    }
+    for (const [k, v] of Object.entries(obj)) {
+      keys.add(k);
+      if (v && typeof v === 'object') collectAllKeys(v, keys);
+    }
+    return keys;
+  };
+
   const fetchSymbolBasic = async (symbol) => {
-    // FIX: encode the entire symbol|stocks segment so | becomes %7C
+    // Try both parameter styles NASDAQ has been observed to use
     const path = `/api/quote/basic?symbol=${encodeURIComponent(symbol + '|stocks')}`;
     let json;
     try {
@@ -1664,62 +1699,47 @@ async function loadBasicQuotes() {
       return null;
     }
 
-    // NASDAQ responses are usually wrapped in { data: {...} }
-    // Defensively try multiple root locations
-    let d = json?.data;
-    if (!d && json?.symbol) d = json;                 // unwrapped response
-    if (!d && Array.isArray(json) && json.length > 0) d = json[0];
-    if (!d) {
-      log(`Basic Quote [${symbol}]: no data in response. Top-level keys: ${Object.keys(json || {}).join(', ')}`, 'warn');
+    if (!json) {
+      log(`Basic Quote [${symbol}]: empty response`, 'warn');
       return null;
     }
 
-    // The basic endpoint may nest under primaryData or return fields flat
-    const pd = d.primaryData || {};
-    const bd = d.basicData || {};
-    const qd = d.quote || {};
-    const sources = [d, pd, bd, qd].filter(src => src && typeof src === 'object');
+    // In single mode, dump every key NASDAQ sent so the user can compare
+    if (basicQuotesMode === 'single') {
+      const allKeys = Array.from(collectAllKeys(json)).sort();
+      log(`Basic Quote [${symbol}]: NASDAQ response keys — ${allKeys.join(', ')}`, 'info');
+    }
 
-    // Robust extractor: scans every source object for any of the supplied keys
-    const getVal = (...keys) => {
-      for (const src of sources) {
-        for (const k of keys) {
-          if (src[k] !== undefined && src[k] !== null && src[k] !== '') return src[k];
-        }
-      }
-      return null;
-    };
-
+    // Build result using deep-search across the ENTIRE response tree
     const result = {
-      symbol: cleanText(getVal('symbol')) || symbol,
-      company_name: cleanText(getVal('companyName', 'company_name')),
-      stock_type: cleanText(getVal('stockType', 'stock_type')),
-      exchange: cleanText(getVal('exchange')),
-      last_sale_price: toPrice(getVal('lastSalePrice', 'lastSale', 'lastsale', 'last_sale_price', 'last')),
-      net_change: toPrice(getVal('netChange', 'net_change', 'change', 'netChangePrice')),
-      percentage_change: cleanText(getVal('percentageChange', 'percentage_change', 'percentChange', 'pct_change', 'percent_change')),
-      delta_indicator: cleanText(getVal('deltaIndicator', 'delta_indicator', 'delta')),
-      open_price: toPrice(getVal('openPrice', 'open_price', 'open')),
-      high_price: toPrice(getVal('highPrice', 'high_price', 'high')),
-      low_price: toPrice(getVal('lowPrice', 'low_price', 'low')),
-      previous_close: toPrice(getVal('previousClosePrice', 'previousClose', 'previous_close', 'prevClose', 'previous_close_price')),
-      volume: toBigInt(getVal('volume', 'shareVolume', 'totalVolume', 'share_volume')),
-      market_status: cleanText(getVal('marketStatus', 'market_status')),
-      fifty_two_week_range: cleanText(getVal('fiftyTwoWeekHighLow', 'fifty_two_week_range', 'fiftyTwoWeekRange', 'weekRange', 'week_range')),
-      last_trade_timestamp: cleanText(getVal('lastTradeTimestamp', 'last_trade_timestamp', 'lastTradeTime', 'last_trade_time'))
+      symbol: cleanText(deepFind(json, ['symbol', 'Symbol', 'SYMBOL'])) || symbol,
+      company_name: cleanText(deepFind(json, ['companyName', 'company_name', 'CompanyName', 'name', 'Name', 'company'])),
+      stock_type: cleanText(deepFind(json, ['stockType', 'stock_type', 'StockType', 'type', 'Type', 'securityType', 'security_type'])),
+      exchange: cleanText(deepFind(json, ['exchange', 'Exchange', 'EXCHANGE', 'market', 'Market', 'listingExchange'])),
+      last_sale_price: toPrice(deepFind(json, ['lastSalePrice', 'last_sale_price', 'lastSale', 'lastsale', 'last', 'Last', 'price', 'Price', 'latestPrice', 'latest_price', 'close', 'Close', 'currentPrice', 'current_price'])),
+      net_change: toPrice(deepFind(json, ['netChange', 'net_change', 'NetChange', 'change', 'Change', 'CHANGE', 'netChangePrice', 'net_change_price', 'chg', 'Chg'])),
+      percentage_change: cleanText(deepFind(json, ['percentageChange', 'percentage_change', 'PercentageChange', 'percentChange', 'percent_change', 'pctChange', 'pct_change', 'pctchange', 'changePercent', 'change_percent', 'percent', 'Percent'])),
+      delta_indicator: cleanText(deepFind(json, ['deltaIndicator', 'delta_indicator', 'DeltaIndicator', 'delta', 'Delta', 'direction', 'Direction', 'trend', 'Trend'])),
+      open_price: toPrice(deepFind(json, ['openPrice', 'open_price', 'OpenPrice', 'open', 'Open', 'OPEN'])),
+      high_price: toPrice(deepFind(json, ['highPrice', 'high_price', 'HighPrice', 'high', 'High', 'HIGH'])),
+      low_price: toPrice(deepFind(json, ['lowPrice', 'low_price', 'LowPrice', 'low', 'Low', 'LOW'])),
+      previous_close: toPrice(deepFind(json, ['previousClosePrice', 'previous_close', 'previousClose', 'PreviousClose', 'prevClose', 'prev_close', 'previous', 'Previous', 'prev', 'Prev', 'closePrice', 'close_price', 'priorClose'])),
+      volume: toBigInt(deepFind(json, ['volume', 'Volume', 'VOLUME', 'shareVolume', 'share_volume', 'ShareVolume', 'totalVolume', 'total_volume', 'TotalVolume', 'vol', 'Vol', 'sharesTraded'])),
+      market_status: cleanText(deepFind(json, ['marketStatus', 'market_status', 'MarketStatus', 'status', 'Status', 'marketState', 'market_state'])),
+      fifty_two_week_range: cleanText(deepFind(json, ['fiftyTwoWeekHighLow', 'fifty_two_week_range', 'FiftyTwoWeekHighLow', 'fiftyTwoWeekRange', 'weekRange', 'week_range', 'WeekRange', '52WeekRange', '52_week_range', 'yearRange', 'year_range'])),
+      last_trade_timestamp: cleanText(deepFind(json, ['lastTradeTimestamp', 'last_trade_timestamp', 'LastTradeTimestamp', 'lastTradeTime', 'last_trade_time', 'tradeTime', 'trade_time', 'timestamp', 'Timestamp', 'lastUpdated', 'last_updated']))
     };
 
-    // Debug: log null fields in single mode so the user can see what NASDAQ is (not) sending
+    // In single mode, report which fields are still null
     if (basicQuotesMode === 'single') {
       const nullFields = Object.entries(result)
         .filter(([k, v]) => v === null && k !== 'symbol')
         .map(([k]) => k);
       if (nullFields.length > 0) {
-        log(`Basic Quote [${symbol}]: fields returned as null — ${nullFields.join(', ')}`, 'warn');
+        log(`Basic Quote [${symbol}]: fields still null — ${nullFields.join(', ')}`, 'warn');
+      } else {
+        log(`Basic Quote [${symbol}]: all fields resolved`, 'success');
       }
-      // Also log every key we actually received so the user can compare
-      const allKeys = sources.map(src => Object.keys(src)).flat();
-      log(`Basic Quote [${symbol}]: available keys — ${[...new Set(allKeys)].sort().join(', ')}`, 'info');
     }
 
     return result;
