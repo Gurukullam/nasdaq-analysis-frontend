@@ -934,7 +934,7 @@
 
 const NASDAQ_ENDPOINTS = [
   { id: 'screener', name: 'Stock Screener', path: '/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq', description: 'List all stocks with price, change, market cap — FULL UNIVERSE', table: 'nasdaq_stocks', status: 'active' },
-  { id: 'basic_quotes', name: 'Current Quote (Basic)', path: '/api/quote/basic?&symbol={symbol}|stocks', description: 'Basic quote data with price, change, volume, open/high/low, and previous close', table: 'nasdaq_basic_quotes', status: 'active' },
+  { id: 'basic_quotes', name: 'Current Quote (Basic)', path: '/api/quote/basic?&symbol={symbol}|stocks', description: 'Lightweight ticker: price, change, percent change, and delta indicator only', table: 'nasdaq_basic_quotes', status: 'active' },
   { id: 'quotes', name: 'Quote Info', path: '/api/quote/{symbol}/info?assetclass=stocks', description: 'Detailed quote data for individual symbols', table: 'nasdaq_quotes', status: 'active' },
   { id: 'ipos', name: 'IPO Calendar', path: '/api/ipo/calendar', description: 'Upcoming IPOs with pricing and dates', table: 'nasdaq_ipos', status: 'active' },
   { id: 'dividends', name: 'Dividend Calendar', path: '/api/calendar/dividends', description: 'Dividend events with ex-dates and payment dates', table: 'nasdaq_dividends', status: 'active' },
@@ -1629,6 +1629,28 @@ async function loadScreener() {
 // ============================================================
 // Current Quote (Basic) Loader
 // ============================================================
+//
+// NASDAQ /api/quote/basic returns a lightweight ticker with only:
+//   symbol, lastSalePrice, netChange, percentageChange, deltaIndicator
+//
+// Fields removed from mapping (never returned by this endpoint):
+//   company_name, stock_type, exchange, market_status,
+//   fifty_two_week_range, last_trade_timestamp
+//
+// Fields kept in mapping (may return during market hours or API updates):
+//   open_price, high_price, low_price, previous_close, volume
+//
+// To drop the dead columns from Supabase, run:
+//   ALTER TABLE nasdaq_basic_quotes
+//     DROP COLUMN IF EXISTS company_name,
+//     DROP COLUMN IF EXISTS stock_type,
+//     DROP COLUMN IF EXISTS exchange,
+//     DROP COLUMN IF EXISTS market_status,
+//     DROP COLUMN IF EXISTS fifty_two_week_range,
+//     DROP COLUMN IF EXISTS last_trade_timestamp;
+//   NOTIFY pgrst, 'reload schema';
+//
+// ============================================================
 
 async function loadBasicQuotes() {
   const cleanText = (val) => {
@@ -1657,13 +1679,11 @@ async function loadBasicQuotes() {
   const deepFind = (obj, keys) => {
     if (obj === null || obj === undefined) return undefined;
     if (typeof obj !== 'object') return undefined;
-    // Direct match
     for (const k of keys) {
       if (k in obj && obj[k] !== null && obj[k] !== undefined && obj[k] !== '') {
         return obj[k];
       }
     }
-    // Recursive search in values
     for (const v of Object.values(obj)) {
       if (v && typeof v === 'object') {
         const found = deepFind(v, keys);
@@ -1673,23 +1693,7 @@ async function loadBasicQuotes() {
     return undefined;
   };
 
-  // Collect every key found anywhere in the response (for diagnostics)
-  const collectAllKeys = (obj, keys = new Set()) => {
-    if (obj === null || obj === undefined) return keys;
-    if (typeof obj !== 'object') return keys;
-    if (Array.isArray(obj)) {
-      for (const item of obj) collectAllKeys(item, keys);
-      return keys;
-    }
-    for (const [k, v] of Object.entries(obj)) {
-      keys.add(k);
-      if (v && typeof v === 'object') collectAllKeys(v, keys);
-    }
-    return keys;
-  };
-
   const fetchSymbolBasic = async (symbol) => {
-    // Try both parameter styles NASDAQ has been observed to use
     const path = `/api/quote/basic?symbol=${encodeURIComponent(symbol + '|stocks')}`;
     let json;
     try {
@@ -1698,49 +1702,24 @@ async function loadBasicQuotes() {
       log(`Basic Quote [${symbol}]: fetch error — ${e.message}`, 'warn');
       return null;
     }
-
     if (!json) {
       log(`Basic Quote [${symbol}]: empty response`, 'warn');
       return null;
     }
 
-    // In single mode, dump every key NASDAQ sent so the user can compare
-    if (basicQuotesMode === 'single') {
-      const allKeys = Array.from(collectAllKeys(json)).sort();
-      log(`Basic Quote [${symbol}]: NASDAQ response keys — ${allKeys.join(', ')}`, 'info');
-    }
-
-    // Build result using deep-search across the ENTIRE response tree
     const result = {
       symbol: cleanText(deepFind(json, ['symbol', 'Symbol', 'SYMBOL'])) || symbol,
-      company_name: cleanText(deepFind(json, ['companyName', 'company_name', 'CompanyName', 'name', 'Name', 'company'])),
-      stock_type: cleanText(deepFind(json, ['stockType', 'stock_type', 'StockType', 'type', 'Type', 'securityType', 'security_type'])),
-      exchange: cleanText(deepFind(json, ['exchange', 'Exchange', 'EXCHANGE', 'market', 'Market', 'listingExchange'])),
-      last_sale_price: toPrice(deepFind(json, ['lastSalePrice', 'last_sale_price', 'lastSale', 'lastsale', 'last', 'Last', 'price', 'Price', 'latestPrice', 'latest_price', 'close', 'Close', 'currentPrice', 'current_price'])),
-      net_change: toPrice(deepFind(json, ['netChange', 'net_change', 'NetChange', 'change', 'Change', 'CHANGE', 'netChangePrice', 'net_change_price', 'chg', 'Chg'])),
-      percentage_change: cleanText(deepFind(json, ['percentageChange', 'percentage_change', 'PercentageChange', 'percentChange', 'percent_change', 'pctChange', 'pct_change', 'pctchange', 'changePercent', 'change_percent', 'percent', 'Percent'])),
-      delta_indicator: cleanText(deepFind(json, ['deltaIndicator', 'delta_indicator', 'DeltaIndicator', 'delta', 'Delta', 'direction', 'Direction', 'trend', 'Trend'])),
-      open_price: toPrice(deepFind(json, ['openPrice', 'open_price', 'OpenPrice', 'open', 'Open', 'OPEN'])),
-      high_price: toPrice(deepFind(json, ['highPrice', 'high_price', 'HighPrice', 'high', 'High', 'HIGH'])),
-      low_price: toPrice(deepFind(json, ['lowPrice', 'low_price', 'LowPrice', 'low', 'Low', 'LOW'])),
-      previous_close: toPrice(deepFind(json, ['previousClosePrice', 'previous_close', 'previousClose', 'PreviousClose', 'prevClose', 'prev_close', 'previous', 'Previous', 'prev', 'Prev', 'closePrice', 'close_price', 'priorClose'])),
-      volume: toBigInt(deepFind(json, ['volume', 'Volume', 'VOLUME', 'shareVolume', 'share_volume', 'ShareVolume', 'totalVolume', 'total_volume', 'TotalVolume', 'vol', 'Vol', 'sharesTraded'])),
-      market_status: cleanText(deepFind(json, ['marketStatus', 'market_status', 'MarketStatus', 'status', 'Status', 'marketState', 'market_state'])),
-      fifty_two_week_range: cleanText(deepFind(json, ['fiftyTwoWeekHighLow', 'fifty_two_week_range', 'FiftyTwoWeekHighLow', 'fiftyTwoWeekRange', 'weekRange', 'week_range', 'WeekRange', '52WeekRange', '52_week_range', 'yearRange', 'year_range'])),
-      last_trade_timestamp: cleanText(deepFind(json, ['lastTradeTimestamp', 'last_trade_timestamp', 'LastTradeTimestamp', 'lastTradeTime', 'last_trade_time', 'tradeTime', 'trade_time', 'timestamp', 'Timestamp', 'lastUpdated', 'last_updated']))
+      last_sale_price: toPrice(deepFind(json, ['lastSalePrice', 'lastSale', 'lastsale', 'last', 'Last', 'price', 'Price'])),
+      net_change: toPrice(deepFind(json, ['netChange', 'net_change', 'NetChange', 'change', 'Change', 'netChangePrice'])),
+      percentage_change: cleanText(deepFind(json, ['percentageChange', 'percentage_change', 'PercentageChange', 'percentChange', 'pctChange', 'pctchange', 'changePercent'])),
+      delta_indicator: cleanText(deepFind(json, ['deltaIndicator', 'delta_indicator', 'DeltaIndicator', 'delta', 'Delta'])),
+      // Kept — may populate during market hours
+      open_price: toPrice(deepFind(json, ['openPrice', 'open', 'Open', 'OPEN'])),
+      high_price: toPrice(deepFind(json, ['highPrice', 'high', 'High', 'HIGH'])),
+      low_price: toPrice(deepFind(json, ['lowPrice', 'low', 'Low', 'LOW'])),
+      previous_close: toPrice(deepFind(json, ['previousClosePrice', 'previousClose', 'prevClose', 'closePrice', 'priorClose'])),
+      volume: toBigInt(deepFind(json, ['volume', 'Volume', 'shareVolume', 'totalVolume', 'vol']))
     };
-
-    // In single mode, report which fields are still null
-    if (basicQuotesMode === 'single') {
-      const nullFields = Object.entries(result)
-        .filter(([k, v]) => v === null && k !== 'symbol')
-        .map(([k]) => k);
-      if (nullFields.length > 0) {
-        log(`Basic Quote [${symbol}]: fields still null — ${nullFields.join(', ')}`, 'warn');
-      } else {
-        log(`Basic Quote [${symbol}]: all fields resolved`, 'success');
-      }
-    }
 
     return result;
   };
