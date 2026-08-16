@@ -862,6 +862,10 @@
         <span class="load-date-badge" id="loadDateBadge">📅 Load Date: —</span>
         <button class="btn btn-secondary btn-sm" onclick="discoverAPIs()">🔍 Discover APIs</button>
         <button class="btn btn-primary" id="loadBtn" onclick="startLoading()">▶️ Load Data</button>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="toggle-switch" id="autoReloadToggle" onclick="toggleAutoReload()" title="Auto-reload every 15s"></div>
+          <span style="font-size:0.8rem;color:var(--text-muted);font-weight:500;">Loop</span>
+        </div>
         <button class="btn btn-danger" id="cancelBtn" onclick="cancelLoading()" style="display:none;">⏹ Cancel</button>
       </div>
     </div>
@@ -969,6 +973,8 @@ let symbolDividendsMode = 'single';  // 'all' or 'single'
 let insiderTradesMode = 'single';  // 'all' or 'single'
 let optionChainMode = 'single';  // 'all' or 'single'
 let basicQuotesMode = 'single';  // 'all' or 'single'
+let autoReloadEnabled = false;
+let autoReloadTimeout = null;
 let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
 
 // ============================================================
@@ -1132,8 +1138,29 @@ function selectBasicQuotesMode(el) {
 
 function cancelLoading() {
   cancelRequested = true;
-  log('Cancel requested. Finishing current operation...', 'warn');
+  if (autoReloadTimeout) {
+    clearTimeout(autoReloadTimeout);
+    autoReloadTimeout = null;
+  }
+  autoReloadEnabled = false;
+  const toggle = document.getElementById('autoReloadToggle');
+  if (toggle) toggle.classList.remove('active');
+  log('Cancel requested. Auto-reload stopped.', 'warn');
   document.getElementById('cancelBtn').style.display = 'none';
+}
+function toggleAutoReload() {
+  const toggle = document.getElementById('autoReloadToggle');
+  autoReloadEnabled = !autoReloadEnabled;
+  toggle.classList.toggle('active');
+  if (autoReloadEnabled) {
+    log('Auto-reload enabled. After each load completes, will wait 15s and reload.', 'info');
+  } else {
+    if (autoReloadTimeout) {
+      clearTimeout(autoReloadTimeout);
+      autoReloadTimeout = null;
+    }
+    log('Auto-reload disabled.', 'info');
+  }
 }
 
 function discoverAPIs() {
@@ -1592,6 +1619,13 @@ async function startLoading() {
   btn.textContent = '▶️ Load Data';
   cancelBtn.style.display = 'none';
   isLoading = false;
+
+  if (autoReloadEnabled && !cancelRequested && selectedAPIs.size > 0) {
+    log('Auto-reload: next iteration in 15 seconds...', 'info');
+    autoReloadTimeout = setTimeout(() => {
+      if (autoReloadEnabled && !isLoading) startLoading();
+    }, 15000);
+  }
 }
 
 // ============================================================
