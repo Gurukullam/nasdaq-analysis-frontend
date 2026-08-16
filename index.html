@@ -1654,41 +1654,75 @@ async function loadBasicQuotes() {
   };
 
   const fetchSymbolBasic = async (symbol) => {
-    const path = `/api/quote/basic?&symbol=${encodeURIComponent(symbol)}|stocks`;
-    const json = await fetchNasdaq(path);
-    const d = json?.data;
-    if (!d) return null;
+    // FIX: encode the entire symbol|stocks segment so | becomes %7C
+    const path = `/api/quote/basic?symbol=${encodeURIComponent(symbol + '|stocks')}`;
+    let json;
+    try {
+      json = await fetchNasdaq(path);
+    } catch (e) {
+      log(`Basic Quote [${symbol}]: fetch error — ${e.message}`, 'warn');
+      return null;
+    }
 
-    // NASDAQ basic quote may return fields flat or nested in primaryData
+    // NASDAQ responses are usually wrapped in { data: {...} }
+    // Defensively try multiple root locations
+    let d = json?.data;
+    if (!d && json?.symbol) d = json;                 // unwrapped response
+    if (!d && Array.isArray(json) && json.length > 0) d = json[0];
+    if (!d) {
+      log(`Basic Quote [${symbol}]: no data in response. Top-level keys: ${Object.keys(json || {}).join(', ')}`, 'warn');
+      return null;
+    }
+
+    // The basic endpoint may nest under primaryData or return fields flat
     const pd = d.primaryData || {};
+    const bd = d.basicData || {};
+    const qd = d.quote || {};
+    const sources = [d, pd, bd, qd].filter(src => src && typeof src === 'object');
 
-    // Helper: try multiple possible field paths
+    // Robust extractor: scans every source object for any of the supplied keys
     const getVal = (...keys) => {
-      for (const k of keys) {
-        if (d[k] !== undefined && d[k] !== null && d[k] !== '') return d[k];
-        if (pd[k] !== undefined && pd[k] !== null && pd[k] !== '') return pd[k];
+      for (const src of sources) {
+        for (const k of keys) {
+          if (src[k] !== undefined && src[k] !== null && src[k] !== '') return src[k];
+        }
       }
       return null;
     };
 
-    return {
-      symbol: getVal('symbol') || symbol,
-      company_name: cleanText(getVal('companyName')),
-      stock_type: cleanText(getVal('stockType')),
+    const result = {
+      symbol: cleanText(getVal('symbol')) || symbol,
+      company_name: cleanText(getVal('companyName', 'company_name')),
+      stock_type: cleanText(getVal('stockType', 'stock_type')),
       exchange: cleanText(getVal('exchange')),
-      last_sale_price: toPrice(getVal('lastSalePrice')),
-      net_change: toPrice(getVal('netChange')),
-      percentage_change: cleanText(getVal('percentageChange')),
-      delta_indicator: cleanText(getVal('deltaIndicator')),
-      open_price: toPrice(getVal('openPrice')),
-      high_price: toPrice(getVal('highPrice')),
-      low_price: toPrice(getVal('lowPrice')),
-      previous_close: toPrice(getVal('previousClosePrice', 'previousClose')),
-      volume: toBigInt(getVal('volume')),
-      market_status: cleanText(getVal('marketStatus')),
-      fifty_two_week_range: cleanText(getVal('fiftyTwoWeekHighLow')),
-      last_trade_timestamp: cleanText(getVal('lastTradeTimestamp'))
+      last_sale_price: toPrice(getVal('lastSalePrice', 'lastSale', 'lastsale', 'last_sale_price', 'last')),
+      net_change: toPrice(getVal('netChange', 'net_change', 'change', 'netChangePrice')),
+      percentage_change: cleanText(getVal('percentageChange', 'percentage_change', 'percentChange', 'pct_change', 'percent_change')),
+      delta_indicator: cleanText(getVal('deltaIndicator', 'delta_indicator', 'delta')),
+      open_price: toPrice(getVal('openPrice', 'open_price', 'open')),
+      high_price: toPrice(getVal('highPrice', 'high_price', 'high')),
+      low_price: toPrice(getVal('lowPrice', 'low_price', 'low')),
+      previous_close: toPrice(getVal('previousClosePrice', 'previousClose', 'previous_close', 'prevClose', 'previous_close_price')),
+      volume: toBigInt(getVal('volume', 'shareVolume', 'totalVolume', 'share_volume')),
+      market_status: cleanText(getVal('marketStatus', 'market_status')),
+      fifty_two_week_range: cleanText(getVal('fiftyTwoWeekHighLow', 'fifty_two_week_range', 'fiftyTwoWeekRange', 'weekRange', 'week_range')),
+      last_trade_timestamp: cleanText(getVal('lastTradeTimestamp', 'last_trade_timestamp', 'lastTradeTime', 'last_trade_time'))
     };
+
+    // Debug: log null fields in single mode so the user can see what NASDAQ is (not) sending
+    if (basicQuotesMode === 'single') {
+      const nullFields = Object.entries(result)
+        .filter(([k, v]) => v === null && k !== 'symbol')
+        .map(([k]) => k);
+      if (nullFields.length > 0) {
+        log(`Basic Quote [${symbol}]: fields returned as null — ${nullFields.join(', ')}`, 'warn');
+      }
+      // Also log every key we actually received so the user can compare
+      const allKeys = sources.map(src => Object.keys(src)).flat();
+      log(`Basic Quote [${symbol}]: available keys — ${[...new Set(allKeys)].sort().join(', ')}`, 'info');
+    }
+
+    return result;
   };
 
   // ── SINGLE SYMBOL MODE ──
@@ -1751,7 +1785,6 @@ async function loadBasicQuotes() {
   log(`Current Quote (Basic): ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
   return allRows;
 }
-
 
 async function loadQuotes() {
   const loadDate = getUSLoadDate();
