@@ -775,6 +775,20 @@
   ::-webkit-scrollbar-thumb { background: #c4a265; border-radius: 4px; }
   ::-webkit-scrollbar-thumb:hover { background: #8b4513; }
 
+  .toggle-switch.locked {
+    background: #d0c8bc;
+    border-color: #c0b8ac;
+    cursor: not-allowed;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .toggle-switch.locked::after {
+    background: #a09080;
+  }
+  #adminModal {
+    backdrop-filter: blur(4px);
+  }
+
   @media (max-width: 768px) {
     .mobile-menu-toggle { display: block; }
     .nav-menu {
@@ -834,6 +848,7 @@
   <div class="settings-panel" id="settingsPanel">
     <div class="card-header">
       <div class="card-title"><span class="icon">⚙️</span> Configuration</div>
+      <button class="btn btn-sm" id="adminLockBtn" onclick="toggleAdminLock()" title="Admin Lock" style="background:none;border:none;font-size:1.2rem;cursor:pointer;padding:4px 8px;color:var(--accent);">🔒</button>
     </div>
     <div class="settings-grid">
       <div class="input-group">
@@ -855,6 +870,21 @@
     </div>
   </div>
 
+
+  <!-- Admin Password Modal -->
+  <div id="adminModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-card); padding:28px; border-radius:var(--radius); max-width:340px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.2); border:1px solid var(--border);">
+      <h3 style="margin-bottom:16px; font-size:1.1rem; color:var(--text);">🔐 Admin Access</h3>
+      <div class="input-group" style="margin-bottom:0;">
+        <label>Password</label>
+        <input type="password" id="adminPassword" placeholder="Enter password" style="width:100%;" onkeydown="if(event.key==='Enter')checkAdminPassword()">
+      </div>
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:20px;">
+        <button class="btn btn-secondary btn-sm" onclick="closeAdminModal()">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="checkAdminPassword()">Unlock</button>
+      </div>
+    </div>
+  </div>
   <div class="card">
     <div class="card-header">
       <div class="card-title"><span class="icon">🗄️</span> Load Database</div>
@@ -863,7 +893,7 @@
         <button class="btn btn-secondary btn-sm" onclick="discoverAPIs()">🔍 Discover APIs</button>
         <button class="btn btn-primary" id="loadBtn" onclick="startLoading()">▶️ Load Data</button>
         <div style="display:flex;align-items:center;gap:6px;">
-          <div class="toggle-switch" id="autoReloadToggle" onclick="toggleAutoReload()" title="Auto-reload every 15s"></div>
+          <div class="toggle-switch" id="autoReloadToggle" onclick="toggleAutoReload()" title="Auto-reload every 2s"></div>
           <span style="font-size:0.8rem;color:var(--text-muted);font-weight:500;">Loop</span>
         </div>
         <button class="btn btn-danger" id="cancelBtn" onclick="cancelLoading()" style="display:none;">⏹ Cancel</button>
@@ -968,6 +998,7 @@ let basicQuotesMode = 'single';  // 'all' or 'single'
 let autoReloadEnabled = false;
 let autoReloadTimeout = null;
 let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
+let isAdminUnlocked = false;
 
 // ============================================================
 // UTILITIES
@@ -1125,6 +1156,45 @@ function selectBasicQuotesMode(el) {
   log(`Current Quote (Basic) mode: ${basicQuotesMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
 }
 
+function toggleAdminLock() {
+  if (isAdminUnlocked) {
+    isAdminUnlocked = false;
+    autoReloadEnabled = false;
+    if (autoReloadTimeout) { clearTimeout(autoReloadTimeout); autoReloadTimeout = null; }
+    const toggle = document.getElementById('autoReloadToggle');
+    if (toggle) { toggle.classList.remove('active'); toggle.classList.add('locked'); }
+    const lockBtn = document.getElementById('adminLockBtn');
+    if (lockBtn) { lockBtn.textContent = '🔒'; lockBtn.title = 'Admin Lock'; }
+    log('Admin lock engaged. Loop toggle disabled.', 'info');
+  } else {
+    document.getElementById('adminModal').style.display = 'flex';
+    document.getElementById('adminPassword').value = '';
+    setTimeout(() => document.getElementById('adminPassword').focus(), 100);
+  }
+}
+
+function closeAdminModal() {
+  document.getElementById('adminModal').style.display = 'none';
+}
+
+function checkAdminPassword() {
+  const input = document.getElementById('adminPassword');
+  if (input.value === '191') {
+    isAdminUnlocked = true;
+    const toggle = document.getElementById('autoReloadToggle');
+    if (toggle) toggle.classList.remove('locked');
+    const lockBtn = document.getElementById('adminLockBtn');
+    if (lockBtn) { lockBtn.textContent = '🔓'; lockBtn.title = 'Admin Unlock'; }
+    closeAdminModal();
+    log('Admin unlocked. Loop toggle is now enabled.', 'success');
+  } else {
+    log('Incorrect password. Access denied.', 'error');
+    input.value = '';
+    input.style.borderColor = 'var(--error)';
+    setTimeout(() => input.style.borderColor = '', 1000);
+  }
+}
+
 function cancelLoading() {
   cancelRequested = true;
   if (autoReloadTimeout) {
@@ -1138,11 +1208,15 @@ function cancelLoading() {
   document.getElementById('cancelBtn').style.display = 'none';
 }
 function toggleAutoReload() {
+  if (!isAdminUnlocked) {
+    log('Loop toggle is locked. Unlock in Settings to enable.', 'warn');
+    return;
+  }
   const toggle = document.getElementById('autoReloadToggle');
   autoReloadEnabled = !autoReloadEnabled;
   toggle.classList.toggle('active');
   if (autoReloadEnabled) {
-    log('Auto-reload enabled. After each load completes, will wait 15s and reload.', 'info');
+    log('Auto-reload enabled. After each load completes, will wait 2s and reload.', 'info');
   } else {
     if (autoReloadTimeout) {
       clearTimeout(autoReloadTimeout);
@@ -1610,10 +1684,10 @@ async function startLoading() {
   isLoading = false;
 
   if (autoReloadEnabled && !cancelRequested && selectedAPIs.size > 0) {
-    log('Auto-reload: next iteration in 15 seconds...', 'info');
+    log('Auto-reload: next iteration in 2 seconds...', 'info');
     autoReloadTimeout = setTimeout(() => {
       if (autoReloadEnabled && !isLoading) startLoading();
-    }, 15000);
+    }, 2000);
   }
 }
 
@@ -3901,6 +3975,8 @@ document.addEventListener('click', function(event) {
 discoverAPIs();
 updateQuoteEstimate();
 document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
+const toggleInit = document.getElementById('autoReloadToggle');
+if (toggleInit) toggleInit.classList.add('locked');
 log('NASDAQ Analysis AI — Phase 2 initialized. Full record fetch enabled.', 'success');
 log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131 | Historical: new | Financials: new | Quarterly: new | Institutional: new | Summary: new | News: new | Option Chain: new', 'info');
 </script>
