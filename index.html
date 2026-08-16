@@ -870,14 +870,6 @@
       </div>
     </div>
 
-    <div class="toggle-row">
-      <div>
-        <div style="font-weight:600;">Auto-load all available tables</div>
-        <div style="font-size:0.8rem;color:var(--text-dim);">Fetch and insert data for all selected APIs</div>
-      </div>
-      <div class="toggle-switch active" id="autoToggle" onclick="toggleAuto()"></div>
-    </div>
-
     <div class="api-list" id="apiList"></div>
 
     <div style="margin-top:16px;">
@@ -1010,9 +1002,6 @@ function setProgress(pct, label) {
 }
 
 function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('active'); }
-function toggleAuto() { document.getElementById('autoToggle').classList.toggle('active'); }
-function isAutoLoad() { return document.getElementById('autoToggle').classList.contains('active'); }
-
 function scrollToLog() {
   const logContainer = document.getElementById('logContainer');
   logContainer.classList.add('active-log');
