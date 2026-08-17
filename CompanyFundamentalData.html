@@ -962,6 +962,7 @@
 // ============================================================
 
 const NASDAQ_ENDPOINTS = [
+  { id: 'news', name: 'Company News', path: '/api/news/topic/articlebysymbol?q={symbol}|STOCKS&offset=0&limit=10&fallback=true', description: 'Latest news articles with headlines, summaries, authors, and publish dates', table: 'nasdaq_news', status: 'active' },
   { id: 'symbol_dividends', name: 'Symbol Dividends', path: '/api/quote/{symbol}/dividends?assetclass=stocks', description: 'Dividend history for a symbol with ex-dates, amounts, and payment dates', table: 'nasdaq_symbol_dividends', status: 'active' },
   { id: 'dividends', name: 'Dividend Calendar', path: '/api/calendar/dividends', description: 'Dividend events with ex-dates and payment dates', table: 'nasdaq_dividends', status: 'active' },
   { id: 'earnings', name: 'Earnings Forecast', path: '/api/analyst/{symbol}/earnings-forecast', description: 'Quarterly and yearly EPS consensus, high/low forecasts, estimate counts, and revisions', table: 'earnings_quarterly_forecast', status: 'active' },
@@ -970,8 +971,7 @@ const NASDAQ_ENDPOINTS = [
   { id: 'quarterly_financials', name: 'Quarterly Financials', path: '/api/company/{symbol}/financials?frequency=2', description: 'Quarterly Income Statement, Balance Sheet, Cash Flow, and Financial Ratios', table: 'quarterly_income_statement', status: 'active' },
   { id: 'insider_trades', name: 'Insider Trades', path: '/api/company/{symbol}/insider-trades', description: 'Insider trading activity with names, relations, transaction types, and share amounts', table: 'nasdaq_insider_trades', status: 'active' },
   { id: 'institutional_holdings', name: 'Institutional Holdings', path: '/api/company/{symbol}/institutional-holdings', description: 'Institutional ownership details, holder positions, and share changes', table: 'nasdaq_institutional_holdings', status: 'active' },
-  { id: 'ipos', name: 'IPO Calendar', path: '/api/ipo/calendar', description: 'Upcoming IPOs with pricing and dates', table: 'nasdaq_ipos', status: 'active' },
-  { id: 'news', name: 'Company News', path: '/api/news/topic/articlebysymbol?q={symbol}|STOCKS&offset=0&limit=10&fallback=true', description: 'Latest news articles with headlines, summaries, authors, and publish dates', table: 'nasdaq_news', status: 'active' }
+  { id: 'ipos', name: 'IPO Calendar', path: '/api/ipo/calendar', description: 'Upcoming IPOs with pricing and dates', table: 'nasdaq_ipos', status: 'active' }
 ];
 
 let selectedAPIs = new Set(['symbol_dividends']);
