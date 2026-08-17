@@ -1,0 +1,2539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NASDAQ Analysis AI — Market & Trading Data</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+<style>
+  .fas { font-family: "Font Awesome 6 Free"; font-weight: 900; font-style: normal; text-rendering: auto; -webkit-font-smoothing: antialiased; }
+  .fa-bars:before { content: "\f0c9"; }
+  .fa-times:before { content: "\f00d"; }
+  .fa-home:before { content: "\f015"; }
+
+  :root {
+    --bg: linear-gradient(135deg, #d4af37 0%, #b8860b 50%, #cd853f 100%);
+    --bg-card: rgba(255, 255, 255, 0.95);
+    --bg-elevated: #f8f5f0;
+    --border: #e0d5c5;
+    --border-hover: #d4af37;
+    --text: #3c2d1f;
+    --text-muted: #8b7355;
+    --text-dim: #a09080;
+    --accent: #8b4513;
+    --accent-glow: rgba(139, 69, 19, 0.15);
+    --accent-secondary: #d4af37;
+    --success: #2d7a3e;
+    --warning: #b8860b;
+    --error: #a03030;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: var(--bg);
+    background-attachment: fixed;
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.6;
+    overflow-x: hidden;
+    touch-action: manipulation;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .header {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    color: #3c2d1f;
+    padding: 0;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1001;
+    width: 100%;
+    min-height: 80px;
+  }
+
+  .navbar {
+    display: flex;
+    flex-direction: column;
+    padding: 0.5rem 1.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
+    gap: 0.5rem;
+  }
+
+  .nav-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    min-height: 45px;
+  }
+
+  .nav-bottom-row {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    width: 100%;
+    padding-top: 0.3rem;
+  }
+
+  .logo {
+    text-decoration: none;
+    color: inherit;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .master-guruvammal-logo {
+    position: relative !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 40px !important;
+    height: 40px !important;
+    box-sizing: border-box !important;
+    font-family: 'Century Gothic', sans-serif !important;
+    font-size: 24px !important;
+    font-weight: 900 !important;
+    letter-spacing: -0.5px !important;
+    line-height: 1 !important;
+    color: #5d3a0a !important;
+    text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.3) !important;
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(139, 69, 19, 0.25) 50%, rgba(205, 133, 63, 0.2) 100%) !important;
+    backdrop-filter: blur(10px) !important;
+    border-radius: 4px !important;
+    padding: 8px !important;
+    box-shadow: 0 4px 12px rgba(139, 69, 19, 0.2), 0 0 20px rgba(212, 175, 55, 0.1) !important;
+    z-index: 10000 !important;
+    transition: all 0.3s ease !important;
+  }
+
+  .master-guruvammal-logo .musical-corner {
+    position: absolute !important;
+    top: 2px !important;
+    right: 3px !important;
+    width: 8px !important;
+    height: 8px !important;
+    border-radius: 50% !important;
+    background-color: transparent !important;
+    border: 0.8px solid #5d3a0a !important;
+    color: #5d3a0a !important;
+    font-family: 'Century Gothic', sans-serif !important;
+    font-size: 4.5px !important;
+    font-weight: 900 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.3) !important;
+    box-shadow: none !important;
+  }
+
+  .master-guruvammal-logo:hover {
+    transform: scale(1.05);
+    box-shadow: 0 10px 30px rgba(139, 69, 19, 0.4), 0 0 50px rgba(212, 175, 55, 0.3);
+  }
+
+  .mobile-menu-toggle {
+    display: none;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: #8b4513;
+    cursor: pointer;
+    padding: 0.5rem;
+  }
+
+  .nav-menu {
+    display: flex;
+    list-style: none;
+    align-items: center;
+    gap: 1.2rem;
+    margin: 0;
+    padding: 0;
+  }
+
+  .nav-menu li { position: relative; }
+
+  .nav-menu a, .nav-menu span {
+    color: #3c2d1f;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.85rem;
+    transition: all 0.3s ease;
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+  }
+
+  .nav-menu a:hover {
+    color: #8b4513;
+    background: rgba(139, 69, 19, 0.1);
+    transform: translateY(-1px);
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 120px 24px 24px;
+    position: relative;
+  }
+
+  .hero {
+    padding: 40px 0 60px;
+    text-align: center;
+  }
+
+  .hero h1 {
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, #8b4513 0%, #d4af37 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero p {
+    font-size: 1.15rem;
+    color: var(--text-muted);
+    max-width: 600px;
+    margin: 0 auto 40px;
+  }
+
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 60px;
+  }
+
+  .stat-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    text-align: center;
+    transition: var(--transition);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+  }
+
+  .stat-card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(139, 69, 19, 0.15);
+  }
+
+  .stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+
+  .stat-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .stat-meta {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  .card {
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    border-radius: 15px;
+    padding: 32px;
+    margin-bottom: 24px;
+    transition: var(--transition);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+  }
+
+  .card:hover {
+    border-color: var(--border-hover);
+    box-shadow: 0 8px 30px rgba(139, 69, 19, 0.12);
+  }
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .card-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .card-title .icon {
+    width: 32px;
+    height: 32px;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: 20px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: var(--transition);
+    text-decoration: none;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent-secondary), #b8860b);
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(139, 69, 19, 0.2);
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 30px rgba(139, 69, 19, 0.3);
+  }
+
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+
+  .btn-secondary:hover {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .btn-sm {
+    padding: 8px 16px;
+    font-size: 0.85rem;
+  }
+
+  .btn-danger {
+    background: var(--error);
+    color: #fff;
+  }
+
+  .btn-danger:hover {
+    background: #802020;
+    transform: translateY(-1px);
+  }
+
+  .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+
+  .input-group label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .input-group input, .input-group select {
+    background: #fff;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: var(--text);
+    font-size: 0.95rem;
+    outline: none;
+    transition: var(--transition);
+    font-family: inherit;
+  }
+
+  .input-group input:focus, .input-group select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  .api-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .api-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+    cursor: pointer;
+  }
+
+  .api-item:hover {
+    border-color: var(--accent);
+    background: rgba(139, 69, 19, 0.03);
+  }
+
+  .api-item.selected {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+  }
+
+  .api-info {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .api-method {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: rgba(139, 69, 19, 0.1);
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  .api-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  .api-desc {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .api-status {
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border-radius: 100px;
+    font-weight: 600;
+  }
+
+  .status-active {
+    background: rgba(45, 122, 62, 0.1);
+    color: var(--success);
+  }
+
+  .status-pending {
+    background: rgba(184, 134, 11, 0.1);
+    color: var(--warning);
+  }
+
+  .exchange-selector, .quote-count-selector {
+    display: flex;
+    gap: 10px;
+    margin: 12px 0;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .exchange-chip, .quote-count-chip {
+    padding: 8px 16px;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: var(--transition);
+    font-weight: 600;
+    user-select: none;
+  }
+
+  .exchange-chip:hover, .quote-count-chip:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .exchange-chip.selected, .quote-count-chip.selected {
+    background: linear-gradient(135deg, var(--accent-secondary), #b8860b);
+    color: #fff;
+    border-color: var(--accent-secondary);
+  }
+
+  .progress-container {
+    margin-top: 24px;
+    padding: 20px;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    display: none;
+  }
+
+  .progress-container.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #e0d5c5;
+    border-radius: 100px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-secondary));
+    border-radius: 100px;
+    transition: width 0.5s ease;
+    width: 0%;
+  }
+
+  .progress-text {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .data-table-container {
+    overflow-x: auto;
+    margin-top: 20px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    max-height: 400px;
+    overflow-y: auto;
+    background: #fff;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+
+  th {
+    background: var(--accent);
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #fff;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+  }
+
+  td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  tr:hover td {
+    background: rgba(139, 69, 19, 0.03);
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  .log-container {
+    background: #2a1f14;
+    border: 1px solid #5d3a0a;
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 0.8rem;
+    max-height: 320px;
+    overflow-y: auto;
+    margin-top: 16px;
+    color: #d4af37;
+    transition: var(--transition);
+    scroll-margin-top: 100px;
+  }
+  .log-container.active-log {
+    border-color: #d4af37;
+    box-shadow: 0 0 20px rgba(212, 175, 55, 0.2);
+  }
+
+  .log-entry {
+    margin-bottom: 4px;
+    padding: 2px 0;
+  }
+
+  .log-time {
+    color: #8b7355;
+    margin-right: 8px;
+  }
+
+  .log-success { color: #7cb342; }
+  .log-error { color: #e57373; }
+  .log-info { color: #d4af37; }
+  .log-warn { color: #ffb74d; }
+
+  .settings-panel {
+    display: none;
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+  }
+
+  .settings-panel.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .toggle-row:last-child {
+    border-bottom: none;
+  }
+
+  .toggle-switch {
+    position: relative;
+    width: 48px;
+    height: 26px;
+    background: var(--bg-elevated);
+    border-radius: 100px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    transition: var(--transition);
+  }
+
+  .toggle-switch.active {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .toggle-switch::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    background: #fff;
+    border-radius: 50%;
+    transition: var(--transition);
+  }
+
+  .toggle-switch.active::after {
+    left: 25px;
+  }
+
+  .alert {
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+    display: none;
+  }
+
+  .alert.active {
+    display: block;
+  }
+
+  .alert-info {
+    background: rgba(139, 69, 19, 0.08);
+    border: 1px solid rgba(139, 69, 19, 0.2);
+    color: var(--accent);
+  }
+
+  .alert-warn {
+    background: rgba(184, 134, 11, 0.08);
+    border: 1px solid rgba(184, 134, 11, 0.2);
+    color: var(--warning);
+  }
+
+  .load-date-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 100px;
+    background: rgba(139, 69, 19, 0.1);
+    border: 1px solid rgba(139, 69, 19, 0.2);
+    color: var(--accent);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  .section-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .estimate-text {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  .badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 100px;
+    background: rgba(139, 69, 19, 0.1);
+    color: var(--accent);
+    border: 1px solid rgba(139, 69, 19, 0.2);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .btn-download {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 6px 14px;
+    border-radius: 100px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+  }
+  .btn-download:hover {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-download:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: rgba(255,255,255,0.3); }
+  ::-webkit-scrollbar-thumb { background: #c4a265; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #8b4513; }
+
+  .toggle-switch.locked {
+    background: #d0c8bc;
+    border-color: #c0b8ac;
+    cursor: not-allowed;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .toggle-switch.locked::after {
+    background: #a09080;
+  }
+  #adminModal {
+    backdrop-filter: blur(4px);
+  }
+
+  @media (max-width: 768px) {
+    .mobile-menu-toggle { display: block; }
+    .nav-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: rgba(255, 255, 255, 0.98);
+      backdrop-filter: blur(10px);
+      flex-direction: column;
+      padding: 1rem;
+      box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+      border-radius: 0 0 8px 8px;
+    }
+    .nav-menu.active { display: flex; }
+    .nav-menu li { width: 100%; }
+    .nav-menu a, .nav-menu span { width: 100%; justify-content: flex-start; padding: 0.8rem; }
+    .hero { padding: 20px 0 40px; }
+    .card { padding: 20px; }
+    .api-item { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .settings-grid { grid-template-columns: 1fr; }
+    .exchange-selector, .quote-count-selector { justify-content: center; }
+    .container { padding: 100px 16px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <nav class="navbar">
+    <div class="nav-top-row">
+      <a href="#" class="logo" onclick="return false;">
+        <div class="master-guruvammal-logo">
+          Ga<span class="musical-corner">P</span>
+        </div>
+      </a>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="toggleSettings()">⚙️ Settings</button>
+        <button class="mobile-menu-toggle" onclick="toggleMobileMenu()" aria-label="Toggle mobile menu" aria-expanded="false">
+          <i class="fas fa-bars" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+    <div class="nav-bottom-row">
+      <ul class="nav-menu" id="navMenu">
+        <li><a href="#" onclick="selectHome(); return false;"><i class="fas fa-home"></i> Home</a></li>
+      </ul>
+    </div>
+  </nav>
+</header>
+
+<div class="container">
+
+  <!-- Stats bar hidden per user request -->
+
+  <div class="settings-panel" id="settingsPanel">
+    <div class="card-header">
+      <div class="card-title"><span class="icon">⚙️</span> Configuration</div>
+      <button class="btn btn-sm" id="adminLockBtn" onclick="toggleAdminLock()" title="Admin Lock" style="background:none;border:none;font-size:1.2rem;cursor:pointer;padding:4px 8px;color:var(--accent);">🔒</button>
+    </div>
+    <div class="settings-grid">
+      <div class="input-group">
+        <label>Backend key</label>
+        <input type="text" id="backendUrl" placeholder="https://your-app.vercel.app" value="">
+      </div>
+      <div class="input-group">
+        <label>Bridge</label>
+        <input type="text" id="sbUrl" placeholder="https://your-project.supabase.co" value="https://ppdmhmrmmwnbvnfilcdh.supabase.co">
+      </div>
+      <div class="input-group">
+        <label>Security Key</label>
+        <input type="password" id="sbKey" placeholder="sb_publishable_...">
+      </div>
+    </div>
+    <div class="alert alert-info active" style="margin-top:12px;">
+      Email GammaPace@outlook.com to request your security keys—no payment required.
+    </div>
+  </div>
+
+
+  <!-- Admin Password Modal -->
+  <div id="adminModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-card); padding:28px; border-radius:var(--radius); max-width:340px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.2); border:1px solid var(--border);">
+      <h3 style="margin-bottom:16px; font-size:1.1rem; color:var(--text);">🔐 Admin Access</h3>
+      <div class="input-group" style="margin-bottom:0;">
+        <label>Password</label>
+        <input type="password" id="adminPassword" placeholder="Enter password" style="width:100%;" onkeydown="if(event.key==='Enter')checkAdminPassword()">
+      </div>
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:20px;">
+        <button class="btn btn-secondary btn-sm" onclick="closeAdminModal()">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="checkAdminPassword()">Unlock</button>
+      </div>
+    </div>
+  </div>
+  <!-- Getting Started Instructions -->
+  <div class="card" id="instructionsCard">
+    <div class="card-header">
+      <div class="card-title"><span class="icon">👋</span> Getting Started</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div style="display:flex;gap:12px;align-items:flex-start;">
+        <div style="background:linear-gradient(135deg, var(--accent-secondary), #b8860b);color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;flex-shrink:0;">1</div>
+        <div>
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px;">Configure Your Keys</div>
+          <div style="font-size:0.9rem;color:var(--text-muted);">Click the <strong>⚙️ Settings</strong> button in the header, then enter your <strong>Backend key</strong>, <strong>Bridge</strong>, and <strong>Security Key</strong> in the Configuration panel.</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:flex-start;">
+        <div style="background:linear-gradient(135deg, var(--accent-secondary), #b8860b);color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;flex-shrink:0;">2</div>
+        <div>
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px;">Download Data</div>
+          <div style="font-size:0.9rem;color:var(--text-muted);">Click the <strong>⬇️ CSV</strong> button next to any data source below to fetch fresh data and download it as a CSV file.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin-only Load Database controls -->
+  <div id="adminPanel" style="display:none;">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="icon">🗄️</span> Load Database</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span class="load-date-badge" id="loadDateBadge">📅 Load Date: —</span>
+          <button class="btn btn-primary" id="loadBtn" onclick="startLoading()">▶️ Load Data</button>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <div class="toggle-switch locked" id="autoReloadToggle" onclick="toggleAutoReload()" title="Auto-reload every 2s"></div>
+            <span style="font-size:0.8rem;color:var(--text-muted);font-weight:500;">Loop</span>
+          </div>
+          <button class="btn btn-danger" id="cancelBtn" onclick="cancelLoading()" style="display:none;">⏹ Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Public Data Sources -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="icon">📡</span> Available Data Sources</div>
+    </div>
+    <div class="api-list" id="apiList"></div>
+
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-text">
+        <span id="progressStatus">Initializing...</span>
+        <span id="progressPercent">0%</span>
+      </div>
+    </div>
+
+    <div class="log-container" id="logContainer">
+      <div class="log-entry"><span class="log-time">--:--:--</span> Ready. Configure your Backend key, Bridge, and Security Key in Settings to begin.</div>
+    </div>
+  </div>
+
+  <div class="card" id="previewCard" style="display:none;">
+    <div class="card-header">
+      <div class="card-title"><span class="icon">👁️</span> Data Preview</div>
+      <button class="btn btn-secondary btn-sm" onclick="clearPreview()">Clear</button>
+    </div>
+    <div class="data-table-container" id="previewTable"></div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// NASDAQ Analysis AI — Market & Trading Data (Frontend / GitHub Pages)
+// Full record fetch + load_date (US Eastern Time) + ALL quotes
+// ============================================================
+
+const NASDAQ_ENDPOINTS = [
+  { id: 'screener', name: 'Stock Screener', path: '/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq', description: 'List all stocks with price, change, market cap — FULL UNIVERSE', table: 'nasdaq_stocks', status: 'active' },
+  { id: 'basic_quotes', name: 'Current Quote (Basic)', path: '/api/quote/basic?&symbol={symbol}|stocks', description: 'Lightweight ticker: price, change, percent change, and delta indicator only', table: 'nasdaq_basic_quotes', status: 'active' },
+  { id: 'quotes', name: 'Quote Info', path: '/api/quote/{symbol}/info?assetclass=stocks', description: 'Detailed quote data for individual symbols', table: 'nasdaq_quotes', status: 'active' },
+  { id: 'historical', name: 'Historical Prices', path: '/api/quote/{symbol}/historical', description: 'Daily OHLCV price history for a symbol', table: 'nasdaq_historical', status: 'active' },
+  { id: 'summary', name: 'Quote Summary', path: '/api/quote/{symbol}/summary?assetclass=stocks', description: 'Key stats: sector, industry, market cap, volume, yield, bid/ask', table: 'nasdaq_summary', status: 'active' },
+  { id: 'option_chain', name: 'Option Chain', path: '/api/quote/{symbol}/option-chain?assetclass=stocks', description: 'Options chain with calls and puts, strikes, bid/ask, volume, and open interest', table: 'nasdaq_option_chain', status: 'active' }
+];
+
+let selectedAPIs = new Set(['screener']);
+let supabaseClient = null;
+let isLoading = false;
+let cancelRequested = false;
+let selectedExchange = 'nasdaq';
+let quoteCount = 'ALL';
+let historicalMode = 'all';  // 'all' or 'single'
+let summaryMode = 'single';  // 'all' or 'single'
+let optionChainMode = 'single';  // 'all' or 'single'
+let basicQuotesMode = 'single';  // 'all' or 'single'
+let autoReloadEnabled = false;
+let autoReloadTimeout = null;
+let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
+let isAdminUnlocked = false;
+
+// ============================================================
+// UTILITIES
+// ============================================================
+
+function getUSLoadDate() {
+  const now = new Date();
+  const usStr = now.toLocaleDateString('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+  const [m, d, y] = usStr.split('/');
+  return `${y}-${m}-${d}`;
+}
+
+function getUSLoadDateDisplay() {
+  return new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function log(msg, type = 'info') {
+  const container = document.getElementById('logContainer');
+  const time = new Date().toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/New_York' });
+  const cls = type === 'success' ? 'log-success' : type === 'error' ? 'log-error' : type === 'warn' ? 'log-warn' : 'log-info';
+  container.innerHTML += `<div class="log-entry"><span class="log-time">${time}</span><span class="${cls}">${msg}</span></div>`;
+  container.scrollTop = container.scrollHeight;
+  if (container.classList.contains('active-log')) {
+    container.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
+}
+
+function setProgress(pct, label) {
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressPercent').textContent = Math.round(pct) + '%';
+  if (label) document.getElementById('progressStatus').textContent = label;
+}
+
+function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('active'); }
+function scrollToLog() {
+  const logContainer = document.getElementById('logContainer');
+  logContainer.classList.add('active-log');
+  logContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => logContainer.classList.remove('active-log'), 3000);
+}
+
+function focusLog() {
+  const logContainer = document.getElementById('logContainer');
+  logContainer.classList.add('active-log');
+  logContainer.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function selectHistoricalMode(el) {
+  historicalMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Historical mode: ${historicalMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
+function selectSummaryMode(el) {
+  summaryMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Quote Summary mode: ${summaryMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
+function selectOptionChainMode(el) {
+  optionChainMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Option Chain mode: ${optionChainMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
+function selectBasicQuotesMode(el) {
+  basicQuotesMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Current Quote (Basic) mode: ${basicQuotesMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
+function toggleAdminLock() {
+  if (isAdminUnlocked) {
+    isAdminUnlocked = false;
+    autoReloadEnabled = false;
+    if (autoReloadTimeout) { clearTimeout(autoReloadTimeout); autoReloadTimeout = null; }
+    const toggle = document.getElementById('autoReloadToggle');
+    if (toggle) { toggle.classList.remove('active'); toggle.classList.add('locked'); }
+    const lockBtn = document.getElementById('adminLockBtn');
+    if (lockBtn) { lockBtn.textContent = '🔒'; lockBtn.title = 'Admin Lock'; }
+    const adminPanel = document.getElementById('adminPanel');
+    if (adminPanel) adminPanel.style.display = 'none';
+    log('Admin lock engaged. Loop toggle disabled.', 'info');
+  } else {
+    document.getElementById('adminModal').style.display = 'flex';
+    document.getElementById('adminPassword').value = '';
+    setTimeout(() => document.getElementById('adminPassword').focus(), 100);
+  }
+}
+
+function closeAdminModal() {
+  document.getElementById('adminModal').style.display = 'none';
+}
+
+function checkAdminPassword() {
+  const input = document.getElementById('adminPassword');
+  if (input.value === '191') {
+    isAdminUnlocked = true;
+    const toggle = document.getElementById('autoReloadToggle');
+    if (toggle) toggle.classList.remove('locked');
+    const lockBtn = document.getElementById('adminLockBtn');
+    if (lockBtn) { lockBtn.textContent = '🔓'; lockBtn.title = 'Admin Unlock'; }
+    const adminPanel = document.getElementById('adminPanel');
+    if (adminPanel) adminPanel.style.display = 'block';
+    closeAdminModal();
+    log('Admin unlocked. Loop toggle is now enabled.', 'success');
+  } else {
+    log('Incorrect password. Access denied.', 'error');
+    input.value = '';
+    input.style.borderColor = 'var(--error)';
+    setTimeout(() => input.style.borderColor = '', 1000);
+  }
+}
+
+function cancelLoading() {
+  cancelRequested = true;
+  if (autoReloadTimeout) {
+    clearTimeout(autoReloadTimeout);
+    autoReloadTimeout = null;
+  }
+  autoReloadEnabled = false;
+  const toggle = document.getElementById('autoReloadToggle');
+  if (toggle) toggle.classList.remove('active');
+  log('Cancel requested. Auto-reload stopped.', 'warn');
+  document.getElementById('cancelBtn').style.display = 'none';
+}
+function toggleAutoReload() {
+  if (!isAdminUnlocked) {
+    log('Loop toggle is locked. Unlock in Settings to enable.', 'warn');
+    return;
+  }
+  const toggle = document.getElementById('autoReloadToggle');
+  autoReloadEnabled = !autoReloadEnabled;
+  toggle.classList.toggle('active');
+  if (autoReloadEnabled) {
+    log('Auto-reload enabled. After each load completes, will wait 2s and reload.', 'info');
+  } else {
+    if (autoReloadTimeout) {
+      clearTimeout(autoReloadTimeout);
+      autoReloadTimeout = null;
+    }
+    log('Auto-reload disabled.', 'info');
+  }
+}
+
+function discoverAPIs() {
+  const list = document.getElementById('apiList');
+  list.innerHTML = '';
+  NASDAQ_ENDPOINTS.forEach(api => {
+    const item = document.createElement('div');
+    item.className = `api-item ${selectedAPIs.has(api.id) ? 'selected' : ''}`;
+    item.onclick = () => toggleAPI(api.id, item);
+
+    // Add date range + mode inputs for historical prices
+    const summaryInputHtml = api.id === 'summary' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="summary-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${summaryMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="summary-mode-chip ${summaryMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectSummaryMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${summaryMode === 'all' ? '#d4af37' : '#fff'};color:${summaryMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="summary-mode-chip ${summaryMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectSummaryMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${summaryMode === 'single' ? '#d4af37' : '#fff'};color:${summaryMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
+    const optionChainInputHtml = api.id === 'option_chain' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="option-chain-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${optionChainMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="option-chain-mode-chip ${optionChainMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectOptionChainMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${optionChainMode === 'all' ? '#d4af37' : '#fff'};color:${optionChainMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="option-chain-mode-chip ${optionChainMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectOptionChainMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${optionChainMode === 'single' ? '#d4af37' : '#fff'};color:${optionChainMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
+    const basicQuotesInputHtml = api.id === 'basic_quotes' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="basic-quotes-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${basicQuotesMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="basic-quotes-mode-chip ${basicQuotesMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectBasicQuotesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${basicQuotesMode === 'all' ? '#d4af37' : '#fff'};color:${basicQuotesMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="basic-quotes-mode-chip ${basicQuotesMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectBasicQuotesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${basicQuotesMode === 'single' ? '#d4af37' : '#fff'};color:${basicQuotesMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
+    const historicalInputHtml = api.id === 'historical' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <span style="color: #8b7355; font-size: 0.8rem;">From</span>
+        <input type="date" id="hist-from" 
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 130px; font-size: 0.8rem; outline: none;"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="color: #8b7355; font-size: 0.8rem;">to</span>
+        <input type="date" id="hist-to"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 130px; font-size: 0.8rem; outline: none;"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="hist-mode-chip ${historicalMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectHistoricalMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${historicalMode === 'all' ? '#d4af37' : '#fff'};color:${historicalMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="hist-mode-chip ${historicalMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectHistoricalMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${historicalMode === 'single' ? '#d4af37' : '#fff'};color:${historicalMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+        <input type="text" id="hist-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${historicalMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+      </span>
+    ` : '';
+
+    item.innerHTML = `
+      <div class="api-info">
+        <span class="api-method">GET</span>
+        <div>
+          <div class="api-name">${api.name}${basicQuotesInputHtml}${historicalInputHtml}${summaryInputHtml}${optionChainInputHtml}</div>
+          <div class="api-desc">${api.description}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+      <span class="api-status ${api.status === 'active' ? 'status-active' : 'status-pending'}">${api.status}</span>
+      <button class="btn-download" onclick="event.stopPropagation(); downloadAPI('${api.id}')" title="Download as CSV">⬇️ CSV</button>
+    </div>
+    `;
+    list.appendChild(item);
+  });
+  // Set default dates for historical inputs (30 days ago → today)
+  const histFrom = document.getElementById('hist-from');
+  const histTo = document.getElementById('hist-to');
+  if (histFrom && !histFrom.value) {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    histFrom.value = d.toISOString().split('T')[0];
+  }
+  if (histTo && !histTo.value) {
+    histTo.value = new Date().toISOString().split('T')[0];
+  }
+
+  log('API discovery complete. 6 endpoints found.', 'success');
+}
+
+function toggleAPI(id, element) {
+  if (selectedAPIs.has(id)) { selectedAPIs.delete(id); element.classList.remove('selected'); }
+  else { selectedAPIs.add(id); element.classList.add('selected'); }
+}
+
+function getBackendUrl() { return document.getElementById('backendUrl').value.trim().replace(/\/$/, ''); }
+
+function initSupabase() {
+  const url = document.getElementById('sbUrl').value.trim();
+  const key = document.getElementById('sbKey').value.trim();
+  if (!url || !key) { log('Please configure Supabase URL and Anon Key in Settings', 'error'); document.getElementById('settingsPanel').classList.add('active'); return false; }
+  try { supabaseClient = supabase.createClient(url, key); log('Supabase client initialized', 'success'); return true; }
+  catch (e) { log('Failed to initialize Supabase: ' + e.message, 'error'); return false; }
+}
+
+// ============================================================
+// Vercel Backend Proxy
+// ============================================================
+
+async function fetchNasdaq(path, timeoutMs = 20000) {
+  const backend = getBackendUrl();
+  if (!backend) throw new Error('Backend URL not configured. Open Settings and paste your Vercel URL.');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${backend}/api/nasdaq-proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `HTTP ${res.status}`); }
+    return res.json();
+  } catch (e) {
+    clearTimeout(timeout);
+    if (e.name === 'AbortError') throw new Error(`Request timeout after ${timeoutMs}ms for ${path}`);
+    throw e;
+  }
+}
+
+async function getScreenerSymbols() {
+  if (screenerSymbolsCache) return screenerSymbolsCache;
+  log('Fetching NASDAQ symbol list...');
+  const data = await fetchNasdaq('/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq');
+  const rows = data?.data?.table?.rows || [];
+  screenerSymbolsCache = rows.map(r => r.symbol).filter(s => s);
+  log(`${screenerSymbolsCache.length} NASDAQ symbols cached for session`, 'success');
+  return screenerSymbolsCache;
+}
+
+// Generic parallel fetch worker for ALL-mode endpoints
+// fetchFn: async (symbol) => data   — should throw on failure
+// options: { concurrency, delayMs, label, onBatch, onProgress }
+async function parallelFetchAll(symbols, fetchFn, options = {}) {
+  const { concurrency = 4, delayMs = 150, label = 'Fetch', onBatch, onProgress } = options;
+  const results = [];
+  let successCount = 0;
+  let failCount = 0;
+  const total = symbols.length;
+
+  for (let i = 0; i < total; i += concurrency) {
+    if (cancelRequested) {
+      log(`${label}: Cancelled by user at ${i}/${total}`, 'warn');
+      break;
+    }
+
+    const batch = symbols.slice(i, i + concurrency);
+    const batchResults = await Promise.allSettled(batch.map(sym => fetchFn(sym)));
+
+    batchResults.forEach((res, idx) => {
+      const symbol = batch[idx];
+      if (res.status === 'fulfilled') {
+        results.push({ symbol, data: res.value, success: true });
+        successCount++;
+      } else {
+        results.push({ symbol, error: res.reason, success: false });
+        failCount++;
+        if (failCount <= 5 || i === total - 1) {
+          log(`${label} [${symbol}]: ${res.reason?.message || res.reason}`, 'warn');
+        }
+      }
+    });
+
+    if (onBatch) onBatch(batchResults, batch, i);
+
+    const processed = Math.min(i + concurrency, total);
+    if (onProgress) onProgress(processed, total, successCount, failCount);
+    if ((processed) % 20 === 0 || processed === total) {
+      const pct = Math.round((processed / total) * 100);
+      setProgress(pct, `${label} ${processed}/${total} · ${successCount} ok · ${failCount} fail`);
+      log(`${label}: ${processed}/${total} symbols · ${successCount} ok · ${failCount} fail`);
+    }
+
+    if (i + concurrency < total && !cancelRequested) {
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+
+  log(`${label}: ${successCount} succeeded · ${failCount} failed · ${results.length} total`);
+  return { results, successCount, failCount };
+}
+
+// ============================================================
+// Data Loading Orchestrator
+// ============================================================
+
+async function startLoading() {
+  if (isLoading) return;
+  if (selectedAPIs.size === 0) { log('No APIs selected. Please select at least one API.', 'error'); return; }
+  const backend = getBackendUrl();
+  if (!backend) { log('Backend URL missing. Open Settings and paste your Vercel deployment URL.', 'error'); document.getElementById('settingsPanel').classList.add('active'); return; }
+  scrollToLog();
+
+  isLoading = true;
+  cancelRequested = false;
+  const btn = document.getElementById('loadBtn');
+  const cancelBtn = document.getElementById('cancelBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Loading...';
+  cancelBtn.style.display = 'inline-flex';
+
+  const progress = document.getElementById('progressContainer');
+  const fill = document.getElementById('progressFill');
+  const status = document.getElementById('progressStatus');
+  const percent = document.getElementById('progressPercent');
+  progress.classList.add('active');
+  const loadDateBadge = document.getElementById('loadDateBadge');
+  if (loadDateBadge) loadDateBadge.textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
+
+  const hasSupabase = initSupabase();
+  if (!hasSupabase) { btn.disabled = false; btn.textContent = '▶️ Load Data'; cancelBtn.style.display = 'none'; isLoading = false; return; }
+
+  const apis = Array.from(selectedAPIs);
+  const total = apis.length;
+  let completed = 0;
+
+  for (const apiId of apis) {
+    const api = NASDAQ_ENDPOINTS.find(a => a.id === apiId);
+    if (!api) continue;
+    status.textContent = `Loading ${api.name}...`;
+    log(`Starting: ${api.name}`);
+
+    try {
+      let data;
+      if (api.id === 'screener') data = await loadScreener();
+      else if (api.id === 'basic_quotes') data = await loadBasicQuotes();
+      else if (api.id === 'quotes') data = await loadQuotes();
+      else if (api.id === 'historical') data = await loadHistorical();
+      else if (api.id === 'summary') data = await loadSummary();
+      else if (api.id === 'option_chain') data = await loadOptionChain();
+
+      if (data && data.length > 0) {
+        log(`${api.name}: ${data.length} records fetched`, 'success');
+        showPreview(api.name, data.slice(0, 10));
+        await insertToSupabase(api.table, data);
+      } else {
+        log(`${api.name}: No data returned`, 'warn');
+      }
+    } catch (e) {
+      log(`${api.name} failed: ${e.message}`, 'error');
+    }
+
+    completed++;
+    const pct = Math.round((completed / total) * 100);
+    fill.style.width = pct + '%';
+    percent.textContent = pct + '%';
+  }
+
+  status.textContent = 'Complete!';
+  log('All selected APIs processed.', 'success');
+  await updateStats();
+  document.getElementById('logContainer').classList.remove('active-log');
+
+  btn.disabled = false;
+  btn.textContent = '▶️ Load Data';
+  cancelBtn.style.display = 'none';
+  isLoading = false;
+
+  if (autoReloadEnabled && !cancelRequested && selectedAPIs.size > 0) {
+    log('Auto-reload: next iteration in 2 seconds...', 'info');
+    autoReloadTimeout = setTimeout(() => {
+      if (autoReloadEnabled && !isLoading) startLoading();
+    }, 2000);
+  }
+}
+
+// ============================================================
+// NASDAQ Fetchers
+// ============================================================
+
+async function loadScreener() {
+  const loadDate = getUSLoadDate();
+  log(`Starting Stock Screener load (Exchange: ${selectedExchange || 'ALL'}, Load Date: ${getUSLoadDateDisplay()})`);
+  setProgress(5, 'Fetching stock screener...');
+
+  const exchangeParam = selectedExchange ? `&exchange=${selectedExchange}` : '';
+  const data = await fetchNasdaq(`/api/screener/stocks?tableonly=true&limit=5000${exchangeParam}`);
+  const totalRecords = data?.data?.totalrecords || 0;
+  const rows = data?.data?.table?.rows || [];
+  log(`Screener API returned ${rows.length} rows (totalrecords: ${totalRecords})`, 'success');
+  if (rows.length === 0) { log('No stock data returned', 'err'); return []; }
+
+  const mapped = rows.map(r => ({
+    symbol: r.symbol || '',
+    name: r.name || '',
+    last_sale: r.lastsale || '',
+    net_change: r.netchange || '',
+    pct_change: r.pctchange || '',
+    market_cap: r.marketCap || '',
+    exchange: selectedExchange || 'ALL',
+    url: r.url || ''
+  }));
+
+  setProgress(20, `Preparing ${mapped.length} stocks for insert...`);
+  return mapped;
+}
+
+
+// ============================================================
+// Current Quote (Basic) Loader
+// ============================================================
+//
+// NASDAQ /api/quote/basic returns a lightweight ticker with only:
+//   symbol, lastSalePrice, netChange, percentageChange, deltaIndicator
+//
+// Fields removed from mapping (never returned by this endpoint):
+//   company_name, stock_type, exchange, market_status,
+//   fifty_two_week_range, last_trade_timestamp
+//
+// Fields kept in mapping (may return during market hours or API updates):
+//   open_price, high_price, low_price, previous_close, volume
+//
+// To drop the dead columns from Supabase, run:
+//   ALTER TABLE nasdaq_basic_quotes
+//     DROP COLUMN IF EXISTS company_name,
+//     DROP COLUMN IF EXISTS stock_type,
+//     DROP COLUMN IF EXISTS exchange,
+//     DROP COLUMN IF EXISTS market_status,
+//     DROP COLUMN IF EXISTS fifty_two_week_range,
+//     DROP COLUMN IF EXISTS last_trade_timestamp;
+//   NOTIFY pgrst, 'reload schema';
+//
+// ============================================================
+
+async function loadBasicQuotes() {
+  const cleanText = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().trim();
+    return s.length > 0 && s !== 'N/A' && s !== 'n/a' ? s : null;
+  };
+
+  const toPrice = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--' || cleaned === '-') return null;
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? null : n;
+  };
+
+  const toBigInt = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--' || cleaned === '-') return null;
+    const n = parseInt(cleaned, 10);
+    return isNaN(n) ? null : n;
+  };
+
+  // Deep-search any value inside an object tree (including arrays)
+  const deepFind = (obj, keys) => {
+    if (obj === null || obj === undefined) return undefined;
+    if (typeof obj !== 'object') return undefined;
+    for (const k of keys) {
+      if (k in obj && obj[k] !== null && obj[k] !== undefined && obj[k] !== '') {
+        return obj[k];
+      }
+    }
+    for (const v of Object.values(obj)) {
+      if (v && typeof v === 'object') {
+        const found = deepFind(v, keys);
+        if (found !== undefined) return found;
+      }
+    }
+    return undefined;
+  };
+
+  const fetchSymbolBasic = async (symbol) => {
+    const path = `/api/quote/basic?symbol=${encodeURIComponent(symbol + '|stocks')}`;
+    let json;
+    try {
+      json = await fetchNasdaq(path);
+    } catch (e) {
+      log(`Basic Quote [${symbol}]: fetch error — ${e.message}`, 'warn');
+      return null;
+    }
+    if (!json) {
+      log(`Basic Quote [${symbol}]: empty response`, 'warn');
+      return null;
+    }
+
+    const result = {
+      symbol: cleanText(deepFind(json, ['symbol', 'Symbol', 'SYMBOL'])) || symbol,
+      last_sale_price: toPrice(deepFind(json, ['lastSalePrice', 'lastSale', 'lastsale', 'last', 'Last', 'price', 'Price'])),
+      net_change: toPrice(deepFind(json, ['netChange', 'net_change', 'NetChange', 'change', 'Change', 'netChangePrice'])),
+      percentage_change: cleanText(deepFind(json, ['percentageChange', 'percentage_change', 'PercentageChange', 'percentChange', 'pctChange', 'pctchange', 'changePercent'])),
+      delta_indicator: cleanText(deepFind(json, ['deltaIndicator', 'delta_indicator', 'DeltaIndicator', 'delta', 'Delta'])),
+      // Kept — may populate during market hours
+      open_price: toPrice(deepFind(json, ['openPrice', 'open', 'Open', 'OPEN'])),
+      high_price: toPrice(deepFind(json, ['highPrice', 'high', 'High', 'HIGH'])),
+      low_price: toPrice(deepFind(json, ['lowPrice', 'low', 'Low', 'LOW'])),
+      previous_close: toPrice(deepFind(json, ['previousClosePrice', 'previousClose', 'prevClose', 'closePrice', 'priorClose'])),
+      volume: toBigInt(deepFind(json, ['volume', 'Volume', 'shareVolume', 'totalVolume', 'vol']))
+    };
+
+    return result;
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (basicQuotesMode === 'single') {
+    const symbolInput = document.getElementById('basic-quotes-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Current Quote (Basic) for ${symbol}`);
+    try {
+      const result = await fetchSymbolBasic(symbol);
+      if (result) {
+        log(`Current Quote (Basic) [${symbol}]: 1 record fetched`, 'success');
+        return [result];
+      }
+      return [];
+    } catch (err) {
+      log(`Current Quote (Basic) [${symbol}]: ${err.message}`, 'error');
+      return [];
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Current Quote (Basic): Failed to fetch symbol list — ${e.message}`, 'error');
+    return [];
+  }
+
+  if (symbols.length === 0) {
+    log('Current Quote (Basic): No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Current Quote (Basic) for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const result = await fetchSymbolBasic(symbol);
+      if (result) {
+        allRows.push(result);
+        return result;
+      }
+      return null;
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Current Quote (Basic)',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Current Quote (Basic) ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Current Quote (Basic): ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
+}
+
+async function loadQuotes() {
+  const loadDate = getUSLoadDate();
+  log(`Starting Quote Info load (Load Date: ${getUSLoadDateDisplay()})`);
+  setProgress(5, 'Fetching quotes...');
+
+  if (!supabaseClient) { log('Supabase not initialized', 'err'); return []; }
+
+  const resumeKey = `quote_resume_${loadDate}_${selectedExchange}`;
+  const resumeEl = document.getElementById('resumeQuotes');
+  const resumeEnabled = resumeEl ? resumeEl.checked : true;
+  let resumeIndex = 0;
+
+  if (resumeEnabled) {
+    const saved = localStorage.getItem(resumeKey);
+    if (saved) {
+      const data = JSON.parse(saved);
+      if (data.exchange === selectedExchange && data.loadDate === loadDate) {
+        resumeIndex = data.index || 0;
+        if (resumeIndex > 0) log(`Resuming quotes from symbol #${resumeIndex + 1}...`, 'info');
+      }
+    }
+  }
+
+  // Get symbols from already-loaded nasdaq_stocks for today
+  let query = supabaseClient.from('nasdaq_stocks').select('symbol').eq('load_date', loadDate).order('market_cap', { ascending: false });
+  if (selectedExchange) query = query.eq('exchange', selectedExchange);
+  const { data: symbolRows, error } = await query;
+  if (error || !symbolRows || symbolRows.length === 0) { log('No symbols found in nasdaq_stocks for today. Run Stock Screener first.', 'warn'); return []; }
+
+  let symbols = symbolRows.map(r => r.symbol);
+  const totalAvailable = symbols.length;
+  if (quoteCount !== 'ALL') symbols = symbols.slice(0, parseInt(quoteCount));
+  if (resumeIndex > 0 && resumeIndex < symbols.length) symbols = symbols.slice(resumeIndex);
+  else resumeIndex = 0;
+
+  log(`Fetching quotes for ${symbols.length} symbols (total: ${totalAvailable}, start: #${resumeIndex + 1}) · 5 concurrent · 80ms gap`);
+  const quotes = [];
+  const startTime = Date.now();
+
+  const fetchQuote = async (sym) => {
+    let retries = 0;
+    while (retries < 3) {
+      try {
+        const json = await fetchNasdaq(`/api/quote/${sym}/info?assetclass=stocks`);
+        const d = json.data;
+        if (!d) return null;
+        const pd = d.primaryData || {};
+        const ks = d.keyStats || {};
+        return {
+          symbol: d.symbol || sym,
+          company_name: d.companyName || '',
+          stock_type: d.stockType || '',
+          exchange: d.exchange || '',
+          is_nasdaq_listed: d.isNasdaqListed === 'True' || d.isNasdaqListed === true,
+          is_nasdaq_100: d.isNasdaq100 === 'True' || d.isNasdaq100 === true,
+          last_sale_price: pd.lastSalePrice || '',
+          net_change: pd.netChange || '',
+          percentage_change: pd.percentageChange || '',
+          volume: pd.volume || '',
+          market_status: d.marketStatus || '',
+          asset_class: d.assetClass || '',
+          delta_indicator: pd.deltaIndicator || '',
+          last_trade_timestamp: pd.lastTradeTimestamp || '',
+          fifty_two_week_range: ks.fiftyTwoWeekHighLow?.value || '',
+          day_range: ks.dayrange?.value || ''
+        };
+      } catch (e) {
+        retries++;
+        if (retries < 3) await new Promise(r => setTimeout(r, 300 * retries));
+      }
+    }
+    log(`Quote fetch failed for ${sym} after 3 attempts`, 'error');
+    return null;
+  };
+
+  const CONCURRENCY = 5;
+  const DELAY_MS = 80;
+
+  for (let i = 0; i < symbols.length; i += CONCURRENCY) {
+    if (cancelRequested) {
+      log(`Cancel received. Saved progress at symbol #${resumeIndex + i + 1}.`, 'warn');
+      if (resumeEnabled) localStorage.setItem(resumeKey, JSON.stringify({ exchange: selectedExchange, loadDate, index: resumeIndex + i }));
+      break;
+    }
+
+    const batch = symbols.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.allSettled(batch.map(sym => fetchQuote(sym)));
+
+    batchResults.forEach((res) => {
+      if (res.status === 'fulfilled' && res.value) {
+        quotes.push(res.value);
+      }
+    });
+
+    const overallIndex = resumeIndex + Math.min(i + CONCURRENCY, symbols.length);
+    const pct = Math.round((overallIndex / totalAvailable) * 100);
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    const rate = elapsed > 0 ? (overallIndex / elapsed).toFixed(1) : 0;
+    setProgress(pct, `Quote ${overallIndex}/${totalAvailable} · ${rate}/s · ${quotes.length} fetched`);
+
+    if (resumeEnabled && (i + CONCURRENCY) % 20 === 0) {
+      localStorage.setItem(resumeKey, JSON.stringify({ exchange: selectedExchange, loadDate, index: overallIndex }));
+    }
+
+    if (i + CONCURRENCY < symbols.length && !cancelRequested) {
+      await new Promise(r => setTimeout(r, DELAY_MS));
+    }
+  }
+
+  if (!cancelRequested && resumeEnabled) {
+    localStorage.removeItem(resumeKey);
+    log('Quote loading complete. Resume progress cleared.', 'success');
+  }
+  return quotes;
+}
+
+// ============================================================
+// Historical Prices Loader
+// ============================================================
+
+async function loadHistorical() {
+  const fromInput = document.getElementById('hist-from');
+  const toInput = document.getElementById('hist-to');
+
+  const fromDate = fromInput?.value;
+  const toDate = toInput?.value;
+
+  if (!fromDate || !toDate) {
+    log('Historical Prices: Please select both From and To dates.', 'error');
+    return [];
+  }
+
+  // Shared helpers
+  const toISODate = (val) => {
+    const s = (val || '').toString().trim();
+    if (!s) return null;
+    const parts = s.split('/');
+    if (parts.length === 3) {
+      const m = parts[0].padStart(2, '0');
+      const d = parts[1].padStart(2, '0');
+      const y = parts[2];
+      return `${y}-${m}-${d}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return null;
+  };
+
+  const toNumber = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? null : n;
+  };
+
+  const normalizeRows = (rows, symbol) => {
+    return rows.map(row => {
+      const getField = (names) => {
+        for (const name of names) {
+          if (row[name] !== undefined && row[name] !== null && row[name] !== '') {
+            return row[name];
+          }
+        }
+        return null;
+      };
+      return {
+        symbol: symbol,
+        date: toISODate(getField(['date', 'tradingDate', 'tradeDate'])),
+        open: toNumber(getField(['open', 'openPrice', '$open'])),
+        high: toNumber(getField(['high', 'highPrice', '$high'])),
+        low: toNumber(getField(['low', 'lowPrice', '$low'])),
+        close: toNumber(getField(['close', 'closePrice', '$close', 'lastSale'])),
+        volume: toNumber(getField(['volume', 'shareVolume', '$volume', 'totalVolume']))
+      };
+    }).filter(r => r.date !== null);
+  };
+
+  const fetchSymbolHistory = async (symbol) => {
+    const path = `/api/quote/${symbol}/historical?assetclass=stocks&fromdate=${fromDate}&todate=${toDate}&limit=5000`;
+    const data = await fetchNasdaq(path);
+    let rows = [];
+    if (data?.data?.tradesTable?.rows) {
+      rows = data.data.tradesTable.rows;
+    } else if (data?.data?.historical?.rows) {
+      rows = data.data.historical.rows;
+    } else if (Array.isArray(data?.data)) {
+      rows = data.data;
+    }
+    return normalizeRows(rows, symbol);
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (historicalMode === 'single') {
+    const symbolInput = document.getElementById('hist-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Historical Prices for ${symbol} (${fromDate} to ${toDate})`);
+
+    try {
+      const normalized = await fetchSymbolHistory(symbol);
+      log(`Historical Prices [${symbol}]: ${normalized.length} records fetched`, 'success');
+      return normalized;
+    } catch (err) {
+      log(`Historical Prices [${symbol}]: ${err.message}`, 'error');
+      return [];
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Historical Prices: Failed to fetch symbol list — ${e.message}`, 'error');
+    return [];
+  }
+
+  if (symbols.length === 0) {
+    log('Historical Prices: No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Historical Prices for ALL ${symbols.length} NASDAQ symbols (${fromDate} to ${toDate}) · 4 concurrent · 150ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const normalized = await fetchSymbolHistory(symbol);
+      if (normalized.length > 0) {
+        allRows.push(...normalized);
+        return normalized;
+      }
+      return [];
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Historical Prices',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Historical ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Historical Prices: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
+}
+
+// ============================================================
+// Quote Summary Loader
+// ============================================================
+
+async function loadSummary() {
+  const cleanText = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().trim();
+    return s.length > 0 && s !== 'N/A' ? s : null;
+  };
+
+  const fetchSymbolSummary = async (symbol) => {
+    const path = `/api/quote/${symbol}/summary?assetclass=stocks`;
+    const json = await fetchNasdaq(path);
+    const d = json?.data;
+    if (!d) return null;
+
+    const sd = d.summaryData || {};
+    const ba = d.bidAsk || {};
+
+    return {
+      symbol: d.symbol || symbol,
+      exchange: cleanText(sd.Exchange?.value),
+      sector: cleanText(sd.Sector?.value),
+      industry: cleanText(sd.Industry?.value),
+      one_year_target: cleanText(sd.OneYrTarget?.value),
+      today_high_low: cleanText(sd.TodayHighLow?.value),
+      share_volume: cleanText(sd.ShareVolume?.value),
+      average_volume: cleanText(sd.AverageVolume?.value),
+      previous_close: cleanText(sd.PreviousClose?.value),
+      fifty_two_week_high_low: cleanText(sd.FiftTwoWeekHighLow?.value),
+      market_cap: cleanText(sd.MarketCap?.value),
+      annualized_dividend: cleanText(sd.AnnualizedDividend?.value),
+      ex_dividend_date: cleanText(sd.ExDividendDate?.value),
+      dividend_payment_date: cleanText(sd.DividendPaymentDate?.value),
+      yield: cleanText(sd.Yield?.value),
+      bid_size: cleanText(ba['Bid * Size']?.value),
+      ask_size: cleanText(ba['Ask * Size']?.value)
+    };
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (summaryMode === 'single') {
+    const symbolInput = document.getElementById('summary-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Quote Summary for ${symbol}`);
+    try {
+      const result = await fetchSymbolSummary(symbol);
+      if (result) {
+        log(`Quote Summary [${symbol}]: 1 record fetched`, 'success');
+        return [result];
+      }
+      return [];
+    } catch (err) {
+      log(`Quote Summary [${symbol}]: ${err.message}`, 'error');
+      return [];
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Quote Summary: Failed to fetch symbol list — ${e.message}`, 'error');
+    return [];
+  }
+
+  if (symbols.length === 0) {
+    log('Quote Summary: No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Quote Summary for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const result = await fetchSymbolSummary(symbol);
+      if (result) {
+        allRows.push(result);
+        return result;
+      }
+      return null;
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Quote Summary',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Quote Summary ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Quote Summary: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
+}
+
+// ============================================================
+// Option Chain Loader
+// ============================================================
+
+async function loadOptionChain() {
+  const toISODate = (val) => {
+    const s = (val || '').toString().trim();
+    if (!s) return null;
+    const parts = s.split('/');
+    if (parts.length === 3) {
+      const m = parts[0].padStart(2, '0');
+      const d = parts[1].padStart(2, '0');
+      const y = parts[2];
+      return `${y}-${m}-${d}`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    return null;
+  };
+
+  const toPrice = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--') return null;
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? null : n;
+  };
+
+  const toBigInt = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--') return null;
+    const n = parseInt(cleaned, 10);
+    return isNaN(n) ? null : n;
+  };
+
+  const cleanText = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().trim();
+    return s.length > 0 && s !== 'N/A' ? s : null;
+  };
+
+  // Parse "Aug 14" (no year) → use current year; "Aug 14, 2026" → full date
+  const parseExpiryDate = (val) => {
+    const s = (val || '').toString().trim();
+    if (!s) return null;
+    // Try full date format: "Aug 14, 2026"
+    const fullMatch = s.match(/^([A-Za-z]{3})\s+(\d{1,2}),\s+(\d{4})$/);
+    if (fullMatch) {
+      const months = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
+      const m = months[fullMatch[1]];
+      const d = parseInt(fullMatch[2], 10);
+      const y = parseInt(fullMatch[3], 10);
+      if (m && !isNaN(d) && !isNaN(y)) {
+        return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      }
+    }
+    // Try short format: "Aug 14" → current year
+    const shortMatch = s.match(/^([A-Za-z]{3})\s+(\d{1,2})$/);
+    if (shortMatch) {
+      const months = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
+      const m = months[shortMatch[1]];
+      const d = parseInt(shortMatch[2], 10);
+      if (m && !isNaN(d)) {
+        const now = new Date();
+        let y = now.getFullYear();
+        // If the date is in the past, assume next year (options expire in the future)
+        const candidate = new Date(y, m - 1, d);
+        if (candidate < now) y++;
+        return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      }
+    }
+    // Fallback to toISODate for M/D/YYYY format
+    return toISODate(s);
+  };
+
+  const fetchSymbolOptions = async (symbol) => {
+    const path = `/api/quote/${symbol}/option-chain?assetclass=stocks`;
+    const json = await fetchNasdaq(path);
+    const d = json?.data;
+    if (!d) return [];
+
+    const rows = d.table?.rows || [];
+    const sym = symbol.toString().toUpperCase();
+    const result = [];
+
+    // Track current expiry group (rows with expirygroup are group headers)
+    let currentExpiry = null;
+
+    for (const row of rows) {
+      // Group header row: has expirygroup, all other fields null
+      if (row.expirygroup) {
+        currentExpiry = parseExpiryDate(row.expirygroup);
+        continue;
+      }
+
+      // Data row: skip if no strike or no expiry date
+      const strike = toPrice(row.strike);
+      const expiryDate = parseExpiryDate(row.expiryDate) || currentExpiry;
+      if (strike === null || expiryDate === null) continue;
+
+      result.push({
+        symbol: sym,
+        expiry_date: expiryDate,
+        strike: strike,
+        call_last: toPrice(row.c_Last),
+        call_change: toPrice(row.c_Change),
+        call_bid: toPrice(row.c_Bid),
+        call_ask: toPrice(row.c_Ask),
+        call_volume: toBigInt(row.c_Volume),
+        call_open_interest: toBigInt(row.c_Openinterest),
+        put_last: toPrice(row.p_Last),
+        put_change: toPrice(row.p_Change),
+        put_bid: toPrice(row.p_Bid),
+        put_ask: toPrice(row.p_Ask),
+        put_volume: toBigInt(row.p_Volume),
+        put_open_interest: toBigInt(row.p_Openinterest),
+        drill_down_url: cleanText(row.drillDownURL)
+      });
+    }
+
+    return result;
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (optionChainMode === 'single') {
+    const symbolInput = document.getElementById('option-chain-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Option Chain for ${symbol}`);
+    try {
+      const result = await fetchSymbolOptions(symbol);
+      log(`Option Chain [${symbol}]: ${result.length} records fetched`, 'success');
+      return result;
+    } catch (err) {
+      log(`Option Chain [${symbol}]: ${err.message}`, 'error');
+      return [];
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Option Chain: Failed to fetch symbol list — ${e.message}`, 'error');
+    return [];
+  }
+
+  if (symbols.length === 0) {
+    log('Option Chain: No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Option Chain for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const rows = await fetchSymbolOptions(symbol);
+      if (rows && rows.length > 0) {
+        allRows.push(...rows);
+        return rows;
+      }
+      return [];
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Option Chain',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Option Chain ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Option Chain: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
+}
+
+// ============================================================
+// Supabase Operations (with load_date)
+// ============================================================
+
+async function insertToSupabase(table, rows) {
+  if (!supabaseClient || rows.length === 0) return;
+  const loadDate = getUSLoadDate();
+  // Mutate in-place to avoid creating millions of new objects (saves memory + GC pressure)
+  rows.forEach(r => r.load_date = loadDate);
+  const rowsWithDate = rows;
+
+  const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes', 'nasdaq_summary', 'nasdaq_basic_quotes'];
+  const upsertHistorical = table === 'nasdaq_historical';
+  const upsertOptionChain = table === 'nasdaq_option_chain';
+  const useUpsert = upsertTables.includes(table) || upsertHistorical || upsertOptionChain;
+
+  const batchSize = 500;
+  const concurrency = 5;
+  const total = rowsWithDate.length;
+  let inserted = 0;
+  let failed = 0;
+
+  log(`${useUpsert ? 'Upserting' : 'Inserting'} ${total.toLocaleString()} rows into ${table} (batch: ${batchSize}, concurrency: ${concurrency})...`);
+
+  // Build all batches up-front
+  const batches = [];
+  for (let i = 0; i < total; i += batchSize) {
+    batches.push(rowsWithDate.slice(i, i + batchSize));
+  }
+
+  // Process one batch
+  const processBatch = async (batch, batchIndex) => {
+    try {
+      let error;
+      if (upsertHistorical) {
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,date', ignoreDuplicates: false }));
+      } else if (upsertOptionChain) {
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,expiry_date,strike,load_date', ignoreDuplicates: false }));
+      } else if (useUpsert) {
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
+      } else {
+        ({ error } = await supabaseClient.from(table).insert(batch));
+      }
+
+      if (error) {
+        // If the whole batch fails, try row-by-row fallback for this batch to salvage what we can
+        if (batch.length > 1 && (error.message.includes('violates') || error.message.includes('conflict') || error.message.includes('duplicate'))) {
+          let batchInserted = 0;
+          for (const row of batch) {
+            try {
+              let rowError;
+              if (upsertHistorical) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,date', ignoreDuplicates: false }));
+              } else if (upsertOptionChain) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,expiry_date,strike,load_date', ignoreDuplicates: false }));
+              } else if (useUpsert) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
+              } else {
+                ({ error: rowError } = await supabaseClient.from(table).insert([row]));
+              }
+              if (!rowError) batchInserted++;
+            } catch (e2) { /* ignore single-row errors */ }
+          }
+          inserted += batchInserted;
+          failed += (batch.length - batchInserted);
+        } else {
+          log(`Batch ${batchIndex + 1} error: ${error.message}`, 'error');
+          failed += batch.length;
+        }
+      } else {
+        inserted += batch.length;
+      }
+    } catch (e) {
+      log(`Batch ${batchIndex + 1} exception: ${e.message}`, 'error');
+      failed += batch.length;
+    }
+  };
+
+  // Process batches with concurrency limit (sliding window)
+  let batchIndex = 0;
+  const progressEvery = Math.max(1, Math.floor(batches.length / 20)); // ~5% increments
+
+  while (batchIndex < batches.length) {
+    const chunk = batches.slice(batchIndex, batchIndex + concurrency);
+    await Promise.all(chunk.map((batch, i) => processBatch(batch, batchIndex + i)));
+    batchIndex += concurrency;
+
+    // Throttle progress updates to reduce DOM thrashing
+    if (batchIndex % (concurrency * Math.max(1, Math.floor(progressEvery / concurrency))) === 0 || batchIndex >= batches.length) {
+      const pct = Math.min(100, Math.round((inserted / total) * 100));
+      setProgress(pct, `Inserting ${table}... ${inserted.toLocaleString()}/${total.toLocaleString()}`);
+    }
+  }
+
+  const status = failed > 0 ? 'warn' : 'success';
+  log(`${useUpsert ? 'Upserted' : 'Inserted'} ${inserted.toLocaleString()} rows into ${table}${failed > 0 ? ' (' + failed + ' failed)' : ''} · load_date: ${loadDate}`, status);
+}
+
+async function updateStats() {
+  if (!supabaseClient) return;
+  const tables = [
+    { name: 'nasdaq_stocks', statId: 'stat-stocks', metaId: 'meta-stocks' },
+    { name: 'nasdaq_basic_quotes', statId: 'stat-basic', metaId: 'meta-basic' },
+    { name: 'nasdaq_quotes', statId: 'stat-quotes', metaId: 'meta-quotes' },
+    { name: 'nasdaq_historical', statId: 'stat-historical', metaId: 'meta-historical' },
+    { name: 'nasdaq_summary', statId: 'stat-summary', metaId: 'meta-summary' },
+    { name: 'nasdaq_option_chain', statId: 'stat-oc', metaId: 'meta-oc' }
+  ];
+  const today = getUSLoadDate();
+  for (const t of tables) {
+    // Stats bar may be hidden/absent from DOM — null-guard all lookups
+    const statEl = document.getElementById(t.statId);
+    const metaEl = document.getElementById(t.metaId);
+    if (!statEl && !metaEl) continue;
+    try {
+      const { count: totalCount } = await supabaseClient.from(t.name).select('*', { count: 'exact', head: true });
+      if (totalCount != null && statEl) statEl.textContent = totalCount;
+      const { count: todayCount } = await supabaseClient.from(t.name).select('*', { count: 'exact', head: true }).eq('load_date', today);
+      if (todayCount != null && metaEl) metaEl.textContent = `${todayCount} today`;
+    } catch (e) {}
+  }
+}
+
+
+// ============================================================
+// CSV Download Helpers
+// ============================================================
+
+function escapeCSV(val) {
+  if (val === null || val === undefined) return '';
+  const str = String(val);
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+function generateCSVFiles(data, tableName, maxBytes = 5 * 1024 * 1024) {
+  if (!data || data.length === 0) return [];
+  const headers = Object.keys(data[0]);
+  const headerLine = headers.map(escapeCSV).join(',');
+  const encoder = new TextEncoder();
+
+  const files = [];
+  let currentRows = [];
+  let currentSize = encoder.encode(headerLine + '\n').length;
+
+  for (const row of data) {
+    const line = headers.map(h => escapeCSV(row[h])).join(',');
+    const lineWithNL = line + '\n';
+    const lineSize = encoder.encode(lineWithNL).length;
+
+    if (currentSize + lineSize > maxBytes && currentRows.length > 0) {
+      const content = headerLine + '\n' + currentRows.join('\n');
+      files.push({ name: `${tableName}_1_${files.length + 1}.csv`, content });
+      currentRows = [line];
+      currentSize = encoder.encode(headerLine + '\n' + lineWithNL).length;
+    } else {
+      currentRows.push(line);
+      currentSize += lineSize;
+    }
+  }
+
+  if (currentRows.length > 0) {
+    const content = headerLine + '\n' + currentRows.join('\n');
+    files.push({ name: `${tableName}_1_${files.length + 1}.csv`, content });
+  }
+
+  return files;
+}
+
+function getTablesForAPI(apiId) {
+  switch (apiId) {
+    case 'screener': return ['nasdaq_stocks'];
+    case 'basic_quotes': return ['nasdaq_basic_quotes'];
+    case 'quotes': return ['nasdaq_quotes'];
+    case 'historical': return ['nasdaq_historical'];
+    case 'summary': return ['nasdaq_summary'];
+    case 'option_chain': return ['nasdaq_option_chain'];
+    default: return [];
+  }
+}
+
+async function fetchAndUpsertAPI(api) {
+  let data;
+  if (api.id === 'screener') data = await loadScreener();
+  else if (api.id === 'basic_quotes') data = await loadBasicQuotes();
+  else if (api.id === 'quotes') data = await loadQuotes();
+  else if (api.id === 'historical') data = await loadHistorical();
+  else if (api.id === 'summary') data = await loadSummary();
+  else if (api.id === 'option_chain') data = await loadOptionChain();
+
+  if (data && data.length > 0) {
+    await insertToSupabase(api.table, data);
+  }
+
+  return data;
+}
+
+async function downloadTableAsCSV(tableName, loadDate) {
+  if (!supabaseClient) {
+    log('Supabase not initialized', 'error');
+    return;
+  }
+
+  log(`Querying ${tableName} for ${loadDate}...`);
+  const { data, error } = await supabaseClient.from(tableName).select('*').eq('load_date', loadDate);
+  if (error) {
+    log(`Error querying ${tableName}: ${error.message}`, 'error');
+    return;
+  }
+  if (!data || data.length === 0) {
+    log(`No data in ${tableName} for ${loadDate}`, 'warn');
+    return;
+  }
+
+  const files = generateCSVFiles(data, tableName);
+  const encoder = new TextEncoder();
+  const totalSize = files.reduce((sum, f) => sum + encoder.encode(f.content).length, 0);
+  const sizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+
+  log(`${tableName}: ${data.length} rows · ${sizeMB} MB · ${files.length} file(s) to download`, 'info');
+
+  await new Promise(r => setTimeout(r, 300));
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const blob = new Blob([file.content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (i < files.length - 1) await new Promise(r => setTimeout(r, 150));
+  }
+
+  log(`Downloaded ${files.length} file(s) for ${tableName}`, 'success');
+}
+
+async function downloadAPI(apiId) {
+  if (isLoading) {
+    log('Another operation is in progress. Please wait.', 'warn');
+    return;
+  }
+  const backend = getBackendUrl();
+  const sbUrl = document.getElementById('sbUrl').value.trim();
+  const sbKey = document.getElementById('sbKey').value.trim();
+
+  if (!backend || !sbUrl || !sbKey) {
+    log('Please configure Backend key, Bridge, and Security Key in Settings first.', 'warn');
+    const settingsPanel = document.getElementById('settingsPanel');
+    settingsPanel.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+  focusLog();
+
+  const api = NASDAQ_ENDPOINTS.find(a => a.id === apiId);
+  if (!api) return;
+
+  isLoading = true;
+  cancelRequested = false;
+
+  const progress = document.getElementById('progressContainer');
+  const fill = document.getElementById('progressFill');
+  const status = document.getElementById('progressStatus');
+  const percent = document.getElementById('progressPercent');
+  progress.classList.add('active');
+  const loadDateBadge = document.getElementById('loadDateBadge');
+  if (loadDateBadge) loadDateBadge.textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
+
+  log(`Download flow started for ${api.name}...`);
+
+  const hasSupabase = initSupabase();
+  if (!hasSupabase) {
+    isLoading = false;
+    progress.classList.remove('active');
+    return;
+  }
+
+  try {
+    status.textContent = `Fetching ${api.name}...`;
+    await fetchAndUpsertAPI(api);
+
+    const loadDate = getUSLoadDate();
+    const tables = getTablesForAPI(api.id);
+
+    for (let i = 0; i < tables.length; i++) {
+      const tableName = tables[i];
+      const pct = Math.round(((i + 1) / (tables.length + 1)) * 100);
+      fill.style.width = pct + '%';
+      percent.textContent = pct + '%';
+      status.textContent = `Downloading ${tableName}...`;
+      await downloadTableAsCSV(tableName, loadDate);
+    }
+
+    fill.style.width = '100%';
+    percent.textContent = '100%';
+    status.textContent = 'Download complete!';
+    log(`Download flow complete for ${api.name}`, 'success');
+  } catch (e) {
+    log(`Download flow failed: ${e.message}`, 'error');
+  }
+
+  document.getElementById('logContainer').classList.remove('active-log');
+  isLoading = false;
+}
+
+// ============================================================
+// Data Preview
+// ============================================================
+
+function showPreview(title, rows) {
+  if (!isAdminUnlocked) return;
+  const card = document.getElementById('previewCard');
+  const container = document.getElementById('previewTable');
+  if (!rows || rows.length === 0) return;
+  const keys = Object.keys(rows[0]);
+  let html = '<table><thead><tr>';
+  keys.forEach(k => html += `<th>${k}</th>`);
+  html += '</tr></thead><tbody>';
+  rows.forEach(row => {
+    html += '<tr>';
+    keys.forEach(k => { const val = row[k] != null ? String(row[k]).substring(0, 60) : ''; html += `<td>${val}</td>`; });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  container.innerHTML = html;
+  card.style.display = 'block';
+}
+
+function clearPreview() {
+  document.getElementById('previewCard').style.display = 'none';
+  document.getElementById('previewTable').innerHTML = '';
+}
+
+// ============================================================
+// Navigation
+// ============================================================
+
+function selectHome() {
+  // Placeholder — user will wire functionality later
+  log('Home selected', 'info');
+}
+
+// ============================================================
+// Mobile Menu
+// ============================================================
+
+function toggleMobileMenu() {
+  const navMenu = document.getElementById('navMenu');
+  const toggleBtn = document.querySelector('.mobile-menu-toggle');
+  navMenu.classList.toggle('active');
+  const icon = toggleBtn.querySelector('i');
+  if (navMenu.classList.contains('active')) {
+    icon.className = 'fas fa-times';
+    toggleBtn.setAttribute('aria-expanded', 'true');
+  } else {
+    icon.className = 'fas fa-bars';
+    toggleBtn.setAttribute('aria-expanded', 'false');
+  }
+}
+
+document.addEventListener('click', function(event) {
+  const navMenu = document.getElementById('navMenu');
+  const toggleBtn = document.querySelector('.mobile-menu-toggle');
+  const navbar = document.querySelector('.navbar');
+  if (!navbar.contains(event.target) && navMenu.classList.contains('active')) {
+    navMenu.classList.remove('active');
+    const icon = toggleBtn.querySelector('i');
+    icon.className = 'fas fa-bars';
+    toggleBtn.setAttribute('aria-expanded', 'false');
+  }
+});
+
+// ============================================================
+// Init
+// ============================================================
+
+discoverAPIs();
+document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
+const toggleInit = document.getElementById('autoReloadToggle');
+if (toggleInit) toggleInit.classList.add('locked');
+log('NASDAQ Analysis AI — Market & Trading Data initialized. Full record fetch enabled.', 'success');
+log('NASDAQ: 4,121 | NYSE: 2,717 | AMEX: 292 | ALL: 7,131 | Historical: new | Summary: new | Option Chain: new', 'info');
+</script>
+
+</body>
+</html>
+</file_content>
+<task_progress>
+- [x] Identify correct source: index.html (Alpha Seventeen with admin lock)
+- [x] Rebuild MarketTradingData.html from index.html with 10 non-Market endpoints removed
+- [ ] Verify admin lock, Getting Started, admin panel, 2s Loop, admin-only preview are intact
+- [ ] Verify zero references to removed endpoints remain
+- [ ] Verify delta vs index.html is endpoint-only
+</task_progress>
+</body>
+</html>
