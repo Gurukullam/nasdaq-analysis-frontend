@@ -852,21 +852,20 @@
     </div>
     <div class="settings-grid">
       <div class="input-group">
-        <label>Backend URL (Vercel)</label>
+        <label>Backend key</label>
         <input type="text" id="backendUrl" placeholder="https://your-app.vercel.app" value="">
       </div>
       <div class="input-group">
-        <label>Supabase URL</label>
+        <label>Bridge</label>
         <input type="text" id="sbUrl" placeholder="https://your-project.supabase.co" value="https://ppdmhmrmmwnbvnfilcdh.supabase.co">
       </div>
       <div class="input-group">
-        <label>Supabase Anon Key</label>
+        <label>Security Key</label>
         <input type="password" id="sbKey" placeholder="sb_publishable_...">
       </div>
     </div>
     <div class="alert alert-info active" style="margin-top:12px;">
-      💡 <strong>Step 1:</strong> Deploy backend to Vercel and paste its URL above.<br>
-      💡 <strong>Step 2:</strong> Paste your Supabase publishable key above.
+      Email GammaPace@outlook.com to request your security keys—no payment required.
     </div>
   </div>
 
@@ -890,7 +889,6 @@
       <div class="card-title"><span class="icon">🗄️</span> Load Database</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <span class="load-date-badge" id="loadDateBadge">📅 Load Date: —</span>
-        <button class="btn btn-secondary btn-sm" onclick="discoverAPIs()">🔍 Discover APIs</button>
         <button class="btn btn-primary" id="loadBtn" onclick="startLoading()">▶️ Load Data</button>
         <div style="display:flex;align-items:center;gap:6px;">
           <div class="toggle-switch" id="autoReloadToggle" onclick="toggleAutoReload()" title="Auto-reload every 2s"></div>
@@ -901,33 +899,6 @@
     </div>
 
     <div class="api-list" id="apiList"></div>
-
-    <div style="margin-top:16px;">
-      <div class="section-label">Exchange Filter (Screener Only)</div>
-      <div class="exchange-selector" id="exchangeSelector">
-        <div class="exchange-chip selected" data-exchange="nasdaq" onclick="selectExchange(this)">NASDAQ (4,121)</div>
-        <div class="exchange-chip" data-exchange="nyse" onclick="selectExchange(this)">NYSE (2,717)</div>
-        <div class="exchange-chip" data-exchange="amex" onclick="selectExchange(this)">AMEX (292)</div>
-        <div class="exchange-chip" data-exchange="" onclick="selectExchange(this)">ALL (7,131)</div>
-      </div>
-    </div>
-
-    <div style="margin-top:12px;">
-      <div class="section-label">Quotes to Fetch (per-symbol API calls)</div>
-      <div class="quote-count-selector" id="quoteCountSelector">
-        <div class="quote-count-chip" data-count="50" onclick="selectQuoteCount(this)">Top 50</div>
-        <div class="quote-count-chip" data-count="100" onclick="selectQuoteCount(this)">Top 100</div>
-        <div class="quote-count-chip" data-count="200" onclick="selectQuoteCount(this)">Top 200</div>
-        <div class="quote-count-chip" data-count="500" onclick="selectQuoteCount(this)">Top 500</div>
-        <div class="quote-count-chip selected" data-count="ALL" onclick="selectQuoteCount(this)">ALL</div>
-      </div>
-      <div class="estimate-text" id="quoteEstimate">~4,121 symbols · 100ms delay · est. 7m 0s</div>
-      <div style="margin-top:6px;">
-        <label style="cursor:pointer;font-size:0.8rem;color:var(--text-dim);">
-          <input type="checkbox" id="resumeQuotes" checked style="accent-color:var(--accent);margin-right:6px;">Resume if interrupted (saves progress every 10 symbols)
-        </label>
-      </div>
-    </div>
 
     <div class="progress-container" id="progressContainer">
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
@@ -1044,32 +1015,6 @@ function focusLog() {
   const logContainer = document.getElementById('logContainer');
   logContainer.classList.add('active-log');
   logContainer.scrollIntoView({ behavior: 'smooth', block: 'end' });
-}
-
-function selectExchange(el) {
-  document.querySelectorAll('.exchange-chip').forEach(c => c.classList.remove('selected'));
-  el.classList.add('selected');
-  selectedExchange = el.dataset.exchange;
-  updateQuoteEstimate();
-  log(`Exchange filter set to: ${selectedExchange || 'ALL'}`, 'success');
-}
-
-function selectQuoteCount(el) {
-  document.querySelectorAll('.quote-count-chip').forEach(c => c.classList.remove('selected'));
-  el.classList.add('selected');
-  quoteCount = el.dataset.count;
-  updateQuoteEstimate();
-}
-
-function updateQuoteEstimate() {
-  const counts = { nasdaq: 4121, nyse: 2717, amex: 292, '': 7131 };
-  const total = counts[selectedExchange] || 4121;
-  const count = quoteCount === 'ALL' ? total : parseInt(quoteCount);
-  const delayMs = quoteCount === 'ALL' ? 100 : 250;
-  const seconds = Math.round((count * delayMs) / 1000);
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  document.getElementById('quoteEstimate').textContent = `~${count} symbols · ${delayMs}ms delay · est. ${mins}m ${secs}s`;
 }
 
 function selectHistoricalMode(el) {
@@ -1534,7 +1479,7 @@ async function parallelFetchAll(symbols, fetchFn, options = {}) {
 
 async function startLoading() {
   if (isLoading) return;
-  if (selectedAPIs.size === 0) { log('No APIs selected. Click Discover APIs first.', 'error'); return; }
+  if (selectedAPIs.size === 0) { log('No APIs selected. Please select at least one API.', 'error'); return; }
   const backend = getBackendUrl();
   if (!backend) { log('Backend URL missing. Open Settings and paste your Vercel deployment URL.', 'error'); document.getElementById('settingsPanel').classList.add('active'); return; }
   scrollToLog();
@@ -1890,7 +1835,8 @@ async function loadQuotes() {
   if (!supabaseClient) { log('Supabase not initialized', 'err'); return []; }
 
   const resumeKey = `quote_resume_${loadDate}_${selectedExchange}`;
-  const resumeEnabled = document.getElementById('resumeQuotes').checked;
+  const resumeEl = document.getElementById('resumeQuotes');
+  const resumeEnabled = resumeEl ? resumeEl.checked : true;
   let resumeIndex = 0;
 
   if (resumeEnabled) {
@@ -3907,6 +3853,7 @@ async function downloadAPI(apiId) {
 // ============================================================
 
 function showPreview(title, rows) {
+  if (!isAdminUnlocked) return;
   const card = document.getElementById('previewCard');
   const container = document.getElementById('previewTable');
   if (!rows || rows.length === 0) return;
@@ -3973,7 +3920,6 @@ document.addEventListener('click', function(event) {
 // ============================================================
 
 discoverAPIs();
-updateQuoteEstimate();
 document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
 const toggleInit = document.getElementById('autoReloadToggle');
 if (toggleInit) toggleInit.classList.add('locked');
