@@ -3835,7 +3835,7 @@ async function downloadAPI(apiId) {
     log('Please configure Backend key, Bridge, and Security Key in Settings first.', 'warn');
     const settingsPanel = document.getElementById('settingsPanel');
     settingsPanel.classList.add('active');
-    settingsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     return;
   }
   focusLog();
