@@ -884,20 +884,52 @@
       </div>
     </div>
   </div>
-  <div class="card">
+  <!-- Getting Started Instructions -->
+  <div class="card" id="instructionsCard">
     <div class="card-header">
-      <div class="card-title"><span class="icon">🗄️</span> Load Database</div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <span class="load-date-badge" id="loadDateBadge">📅 Load Date: —</span>
-        <button class="btn btn-primary" id="loadBtn" onclick="startLoading()">▶️ Load Data</button>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <div class="toggle-switch" id="autoReloadToggle" onclick="toggleAutoReload()" title="Auto-reload every 2s"></div>
-          <span style="font-size:0.8rem;color:var(--text-muted);font-weight:500;">Loop</span>
+      <div class="card-title"><span class="icon">👋</span> Getting Started</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div style="display:flex;gap:12px;align-items:flex-start;">
+        <div style="background:linear-gradient(135deg, var(--accent-secondary), #b8860b);color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;flex-shrink:0;">1</div>
+        <div>
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px;">Configure Your Keys</div>
+          <div style="font-size:0.9rem;color:var(--text-muted);">Click the <strong>⚙️ Settings</strong> button in the header, then enter your <strong>Backend key</strong>, <strong>Bridge</strong>, and <strong>Security Key</strong> in the Configuration panel.</div>
         </div>
-        <button class="btn btn-danger" id="cancelBtn" onclick="cancelLoading()" style="display:none;">⏹ Cancel</button>
+      </div>
+      <div style="display:flex;gap:12px;align-items:flex-start;">
+        <div style="background:linear-gradient(135deg, var(--accent-secondary), #b8860b);color:#fff;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;flex-shrink:0;">2</div>
+        <div>
+          <div style="font-weight:600;color:var(--text);margin-bottom:4px;">Download Data</div>
+          <div style="font-size:0.9rem;color:var(--text-muted);">Click the <strong>⬇️ CSV</strong> button next to any data source below to fetch fresh data and download it as a CSV file.</div>
+        </div>
       </div>
     </div>
+  </div>
 
+  <!-- Admin-only Load Database controls -->
+  <div id="adminPanel" style="display:none;">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="icon">🗄️</span> Load Database</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span class="load-date-badge" id="loadDateBadge">📅 Load Date: —</span>
+          <button class="btn btn-primary" id="loadBtn" onclick="startLoading()">▶️ Load Data</button>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <div class="toggle-switch locked" id="autoReloadToggle" onclick="toggleAutoReload()" title="Auto-reload every 2s"></div>
+            <span style="font-size:0.8rem;color:var(--text-muted);font-weight:500;">Loop</span>
+          </div>
+          <button class="btn btn-danger" id="cancelBtn" onclick="cancelLoading()" style="display:none;">⏹ Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Public Data Sources -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="icon">📡</span> Available Data Sources</div>
+    </div>
     <div class="api-list" id="apiList"></div>
 
     <div class="progress-container" id="progressContainer">
@@ -909,7 +941,7 @@
     </div>
 
     <div class="log-container" id="logContainer">
-      <div class="log-entry"><span class="log-time">--:--:--</span> Ready. Configure Backend URL and Supabase key first.</div>
+      <div class="log-entry"><span class="log-time">--:--:--</span> Ready. Configure your Backend key, Bridge, and Security Key in Settings to begin.</div>
     </div>
   </div>
 
@@ -1110,6 +1142,8 @@ function toggleAdminLock() {
     if (toggle) { toggle.classList.remove('active'); toggle.classList.add('locked'); }
     const lockBtn = document.getElementById('adminLockBtn');
     if (lockBtn) { lockBtn.textContent = '🔒'; lockBtn.title = 'Admin Lock'; }
+    const adminPanel = document.getElementById('adminPanel');
+    if (adminPanel) adminPanel.style.display = 'none';
     log('Admin lock engaged. Loop toggle disabled.', 'info');
   } else {
     document.getElementById('adminModal').style.display = 'flex';
@@ -1130,6 +1164,8 @@ function checkAdminPassword() {
     if (toggle) toggle.classList.remove('locked');
     const lockBtn = document.getElementById('adminLockBtn');
     if (lockBtn) { lockBtn.textContent = '🔓'; lockBtn.title = 'Admin Unlock'; }
+    const adminPanel = document.getElementById('adminPanel');
+    if (adminPanel) adminPanel.style.display = 'block';
     closeAdminModal();
     log('Admin unlocked. Loop toggle is now enabled.', 'success');
   } else {
@@ -1497,7 +1533,8 @@ async function startLoading() {
   const status = document.getElementById('progressStatus');
   const percent = document.getElementById('progressPercent');
   progress.classList.add('active');
-  document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
+  const loadDateBadge = document.getElementById('loadDateBadge');
+  if (loadDateBadge) loadDateBadge.textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
 
   const hasSupabase = initSupabase();
   if (!hasSupabase) { btn.disabled = false; btn.textContent = '▶️ Load Data'; cancelBtn.style.display = 'none'; isLoading = false; return; }
@@ -3791,9 +3828,14 @@ async function downloadAPI(apiId) {
     return;
   }
   const backend = getBackendUrl();
-  if (!backend) {
-    log('Backend URL missing. Open Settings and paste your Vercel deployment URL.', 'error');
-    document.getElementById('settingsPanel').classList.add('active');
+  const sbUrl = document.getElementById('sbUrl').value.trim();
+  const sbKey = document.getElementById('sbKey').value.trim();
+
+  if (!backend || !sbUrl || !sbKey) {
+    log('Please configure Backend key, Bridge, and Security Key in Settings first.', 'warn');
+    const settingsPanel = document.getElementById('settingsPanel');
+    settingsPanel.classList.add('active');
+    settingsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return;
   }
   focusLog();
@@ -3809,7 +3851,8 @@ async function downloadAPI(apiId) {
   const status = document.getElementById('progressStatus');
   const percent = document.getElementById('progressPercent');
   progress.classList.add('active');
-  document.getElementById('loadDateBadge').textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
+  const loadDateBadge = document.getElementById('loadDateBadge');
+  if (loadDateBadge) loadDateBadge.textContent = `📅 Load Date: ${getUSLoadDateDisplay()}`;
 
   log(`Download flow started for ${api.name}...`);
 
