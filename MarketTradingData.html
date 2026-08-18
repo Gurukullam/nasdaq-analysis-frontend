@@ -962,6 +962,8 @@
 // ============================================================
 
 const NASDAQ_ENDPOINTS = [
+  { id: 'chart', name: 'Chart Data', path: '/api/quote/{symbol}/chart?assetclass=stocks&charttype=rs', description: 'Intraday price chart data for a symbol (updates every minute)', table: 'nasdaq_chart', status: 'active' },
+  { id: 'realtime_trades', name: 'Realtime Trades', path: '/api/quote/{symbol}/realtime-trades', description: 'Real-time trade records for a symbol (updates every 30 seconds)', table: 'nasdaq_realtime_trades', status: 'active' },
   { id: 'screener', name: 'Stock Screener', path: '/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq', description: 'List all stocks with price, change, market cap — FULL UNIVERSE', table: 'nasdaq_stocks', status: 'active' },
   { id: 'basic_quotes', name: 'Current Quote (Basic)', path: '/api/quote/basic?&symbol={symbol}|stocks', description: 'Lightweight ticker: price, change, percent change, and delta indicator only', table: 'nasdaq_basic_quotes', status: 'active' },
   { id: 'quotes', name: 'Quote Info', path: '/api/quote/{symbol}/info?assetclass=stocks', description: 'Detailed quote data for individual symbols', table: 'nasdaq_quotes', status: 'active' },
@@ -980,6 +982,8 @@ let historicalMode = 'all';  // 'all' or 'single'
 let summaryMode = 'single';  // 'all' or 'single'
 let optionChainMode = 'single';  // 'all' or 'single'
 let basicQuotesMode = 'single';  // 'all' or 'single'
+let chartMode = 'single';  // 'all' or 'single'
+let realtimeTradesMode = 'single';  // 'all' or 'single'
 let autoReloadEnabled = false;
 let autoReloadTimeout = null;
 let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
@@ -1057,6 +1061,20 @@ function selectBasicQuotesMode(el) {
   // Re-render to update chip styles and symbol input visibility
   discoverAPIs();
   log(`Current Quote (Basic) mode: ${basicQuotesMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
+function selectChartMode(el) {
+  chartMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Chart Data mode: ${chartMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+}
+
+function selectRealtimeTradesMode(el) {
+  realtimeTradesMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Realtime Trades mode: ${realtimeTradesMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
 }
 
 function toggleAdminLock() {
@@ -1164,6 +1182,28 @@ function discoverAPIs() {
         </span>
       </span>
     ` : '';
+    const chartInputHtml = api.id === 'chart' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="chart-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${chartMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="chart-mode-chip ${chartMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectChartMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${chartMode === 'all' ? '#d4af37' : '#fff'};color:${chartMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="chart-mode-chip ${chartMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectChartMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${chartMode === 'single' ? '#d4af37' : '#fff'};color:${chartMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
+    const realtimeTradesInputHtml = api.id === 'realtime_trades' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="realtime-trades-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${realtimeTradesMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="realtime-trades-mode-chip ${realtimeTradesMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectRealtimeTradesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${realtimeTradesMode === 'all' ? '#d4af37' : '#fff'};color:${realtimeTradesMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="realtime-trades-mode-chip ${realtimeTradesMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectRealtimeTradesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${realtimeTradesMode === 'single' ? '#d4af37' : '#fff'};color:${realtimeTradesMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+        </span>
+      </span>
+    ` : '';
     const basicQuotesInputHtml = api.id === 'basic_quotes' ? `
       <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
         <input type="text" id="basic-quotes-symbol" placeholder="SYMBOL" value="AAPL"
@@ -1199,7 +1239,7 @@ function discoverAPIs() {
       <div class="api-info">
         <span class="api-method">GET</span>
         <div>
-          <div class="api-name">${api.name}${basicQuotesInputHtml}${historicalInputHtml}${summaryInputHtml}${optionChainInputHtml}</div>
+          <div class="api-name">${api.name}${chartInputHtml}${realtimeTradesInputHtml}${basicQuotesInputHtml}${historicalInputHtml}${summaryInputHtml}${optionChainInputHtml}</div>
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
@@ -1222,7 +1262,7 @@ function discoverAPIs() {
     histTo.value = new Date().toISOString().split('T')[0];
   }
 
-  log('API discovery complete. 6 endpoints found.', 'success');
+  log('API discovery complete. 8 endpoints found.', 'success');
 }
 
 function toggleAPI(id, element) {
@@ -1370,7 +1410,9 @@ async function startLoading() {
 
     try {
       let data;
-      if (api.id === 'screener') data = await loadScreener();
+      if (api.id === 'chart') data = await loadChart();
+      else if (api.id === 'realtime_trades') data = await loadRealtimeTrades();
+      else if (api.id === 'screener') data = await loadScreener();
       else if (api.id === 'basic_quotes') data = await loadBasicQuotes();
       else if (api.id === 'quotes') data = await loadQuotes();
       else if (api.id === 'historical') data = await loadHistorical();
@@ -1600,6 +1642,373 @@ async function loadBasicQuotes() {
   );
 
   log(`Current Quote (Basic): ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
+}
+
+// ============================================================
+// Chart Data Loader
+// ============================================================
+//
+// NASDAQ /api/quote/{symbol}/chart?assetclass=stocks&charttype=rs
+// returns intraday price points (one per minute). Each point:
+//   {
+//     "w": 13707.154855,        // shares (numeric)
+//     "z": {
+//       "time": "2:32 PM",      // display time
+//       "shares": "13707.154855",
+//       "price": "$155.53",
+//       "prevCls": "171.38"     // previous close
+//     },
+//     "x": 1787063520000,       // Unix epoch ms — unique per minute
+//     "y": 155.53               // price (numeric)
+//   }
+//
+// Unique constraint: (symbol, timestamp) with ignoreDuplicates: true
+// → Loop re-runs insert ONLY new minutes, never overwrite history.
+//
+// ============================================================
+
+async function loadChart() {
+  const cleanText = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().trim();
+    return s.length > 0 && s !== 'N/A' && s !== 'n/a' ? s : null;
+  };
+
+  const toPrice = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--' || cleaned === '-') return null;
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? null : n;
+  };
+
+  const toBigInt = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--' || cleaned === '-') return null;
+    const n = parseInt(cleaned, 10);
+    return isNaN(n) ? null : n;
+  };
+
+  // Deep-search any value inside an object tree (including arrays)
+  const deepFind = (obj, keys) => {
+    if (obj === null || obj === undefined) return undefined;
+    if (typeof obj !== 'object') return undefined;
+    for (const k of keys) {
+      if (k in obj && obj[k] !== null && obj[k] !== undefined && obj[k] !== '') {
+        return obj[k];
+      }
+    }
+    for (const v of Object.values(obj)) {
+      if (v && typeof v === 'object') {
+        const found = deepFind(v, keys);
+        if (found !== undefined) return found;
+      }
+    }
+    return undefined;
+  };
+
+  const fetchSymbolChart = async (symbol) => {
+    const path = `/api/quote/${symbol}/chart?assetclass=stocks&charttype=rs`;
+    let json;
+    try {
+      json = await fetchNasdaq(path);
+    } catch (e) {
+      log(`Chart Data [${symbol}]: fetch error — ${e.message}`, 'warn');
+      return [];
+    }
+    if (!json) {
+      log(`Chart Data [${symbol}]: empty response`, 'warn');
+      return [];
+    }
+
+    // Defensive extraction: try data.chart, data array, chart array, or flat array roots
+    let chart = json?.data?.chart;
+    if (!chart && Array.isArray(json?.data)) chart = json.data;
+    if (!chart && Array.isArray(json?.chart)) chart = json.chart;
+    if (!chart && Array.isArray(json)) chart = json;
+    if (!chart && json?.data && typeof json.data === 'object') {
+      chart = deepFind(json.data, ['chart', 'points', 'rows', 'data']) || null;
+    }
+    if (!Array.isArray(chart)) {
+      log(`Chart Data [${symbol}]: no chart array in response`, 'warn');
+      return [];
+    }
+
+    const sym = symbol.toString().toUpperCase();
+    const result = [];
+
+    for (const point of chart) {
+      // "z" holds display strings; "x"/"y"/"w" hold numeric values
+      const z = point?.z || {};
+
+      const timestamp = toBigInt(point?.x) || toBigInt(deepFind(point, ['x', 'timestamp', 'time_ms', 't']));
+      if (timestamp === null) continue; // skip points without a unique timestamp
+
+      result.push({
+        symbol: sym,
+        timestamp: timestamp,
+        price: toPrice(point?.y) || toPrice(z?.price) || toPrice(deepFind(point, ['price', 'value', 'close'])),
+        shares: toPrice(point?.w) || toPrice(z?.shares) || toPrice(deepFind(point, ['shares', 'volume'])),
+        previous_close: toPrice(z?.prevCls) || toPrice(deepFind(point, ['prevCls', 'previousClose', 'prevClose'])),
+        time_text: cleanText(z?.time) || cleanText(deepFind(point, ['time', 'label']))
+      });
+    }
+
+    return result;
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (chartMode === 'single') {
+    const symbolInput = document.getElementById('chart-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Chart Data for ${symbol}`);
+    try {
+      const result = await fetchSymbolChart(symbol);
+      if (result.length > 0) {
+        log(`Chart Data [${symbol}]: ${result.length} records fetched`, 'success');
+        return result;
+      }
+      return [];
+    } catch (err) {
+      log(`Chart Data [${symbol}]: ${err.message}`, 'error');
+      return [];
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Chart Data: Failed to fetch symbol list — ${e.message}`, 'error');
+    return [];
+  }
+
+  if (symbols.length === 0) {
+    log('Chart Data: No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Chart Data for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const rows = await fetchSymbolChart(symbol);
+      if (rows && rows.length > 0) {
+        allRows.push(...rows);
+        return rows;
+      }
+      return [];
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Chart Data',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Chart Data ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Chart Data: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
+}
+
+// ============================================================
+// Realtime Trades Loader
+// ============================================================
+//
+// NASDAQ /api/quote/{symbol}/realtime-trades
+// returns real-time trade records for a symbol. Response shape:
+//   {
+//     "data": {
+//       "symbol": "nvda",
+//       "totalRecords": 0,
+//       "rows": [],                    // ← trade records go here during market hours
+//       "topTable": {
+//         "rows": [{
+//           "nlsVolume": "66,128,534",
+//           "previousClose": "$225.01",
+//           "todayHighLow": "$221.64/$218.6902",
+//           "fiftyTwoWeekHighLow": "$236.54/$164.07"
+//         }]
+//       }
+//     },
+//     "message": "Real-Time trades not available"
+//   }
+//
+// Unique constraint: (symbol, time_text, load_date) with ignoreDuplicates: true
+// → Loop re-runs insert ONLY new trades not already in Supabase.
+//
+// ============================================================
+
+async function loadRealtimeTrades() {
+  const cleanText = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().trim();
+    return s.length > 0 && s !== 'N/A' && s !== 'n/a' ? s : null;
+  };
+
+  const toPrice = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--' || cleaned === '-') return null;
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? null : n;
+  };
+
+  const toBigInt = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--' || cleaned === '-') return null;
+    const n = parseInt(cleaned, 10);
+    return isNaN(n) ? null : n;
+  };
+
+  // Deep-search any value inside an object tree (including arrays)
+  const deepFind = (obj, keys) => {
+    if (obj === null || obj === undefined) return undefined;
+    if (typeof obj !== 'object') return undefined;
+    for (const k of keys) {
+      if (k in obj && obj[k] !== null && obj[k] !== undefined && obj[k] !== '') {
+        return obj[k];
+      }
+    }
+    for (const v of Object.values(obj)) {
+      if (v && typeof v === 'object') {
+        const found = deepFind(v, keys);
+        if (found !== undefined) return found;
+      }
+    }
+    return undefined;
+  };
+
+  const fetchSymbolTrades = async (symbol) => {
+    const path = `/api/quote/${symbol}/realtime-trades`;
+    let json;
+    try {
+      json = await fetchNasdaq(path);
+    } catch (e) {
+      log(`Realtime Trades [${symbol}]: fetch error — ${e.message}`, 'warn');
+      return [];
+    }
+    if (!json) {
+      log(`Realtime Trades [${symbol}]: empty response`, 'warn');
+      return [];
+    }
+
+    const d = json?.data;
+    if (!d) {
+      log(`Realtime Trades [${symbol}]: no data in response`, 'warn');
+      return [];
+    }
+
+    // Extract trade rows defensively
+    let rows = d.rows || [];
+    if (!rows && Array.isArray(d)) rows = d;
+    if (!rows && json?.rows) rows = json.rows;
+    if (!Array.isArray(rows)) rows = [];
+
+    // Extract topTable summary (same for all rows in this batch)
+    const topRow = d.topTable?.rows?.[0] || {};
+    const nlsVolume = toBigInt(topRow.nlsVolume);
+    const previousClose = toPrice(topRow.previousClose);
+    const todayHighLow = cleanText(topRow.todayHighLow);
+    const fiftyTwoWeekRange = cleanText(topRow.fiftyTwoWeekHighLow);
+
+    // If market is closed (rows empty), still log totalRecords for visibility
+    if (rows.length === 0) {
+      log(`Realtime Trades [${symbol}]: ${d.totalRecords || 0} trades (market may be closed)`, 'info');
+      return [];
+    }
+
+    const sym = symbol.toString().toUpperCase();
+    const result = [];
+
+    for (const row of rows) {
+      const timeText = cleanText(deepFind(row, ['time', 'Time', 'timestamp', 'tradeTime', 'trade_time'])) ||
+        cleanText(deepFind(row, ['dateTime', 'date_time']));
+      if (timeText === null) continue; // skip rows without a time identifier
+
+      result.push({
+        symbol: sym,
+        price: toPrice(deepFind(row, ['price', 'Price', 'tradePrice', 'lastSale', 'last_sale'])),
+        size: toBigInt(deepFind(row, ['size', 'Size', 'volume', 'Volume', 'shareVolume', 'shares'])),
+        time_text: timeText,
+        nls_volume: nlsVolume,
+        previous_close: previousClose,
+        today_high_low: todayHighLow,
+        fifty_two_week_range: fiftyTwoWeekRange
+      });
+    }
+
+    return result;
+  };
+
+  // ── SINGLE SYMBOL MODE ──
+  if (realtimeTradesMode === 'single') {
+    const symbolInput = document.getElementById('realtime-trades-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Realtime Trades for ${symbol}`);
+    try {
+      const result = await fetchSymbolTrades(symbol);
+      if (result.length > 0) {
+        log(`Realtime Trades [${symbol}]: ${result.length} records fetched`, 'success');
+        return result;
+      }
+      return [];
+    } catch (err) {
+      log(`Realtime Trades [${symbol}]: ${err.message}`, 'error');
+      return [];
+    }
+  }
+
+  // ── ALL NASDAQ MODE ──
+  let symbols = [];
+  try {
+    symbols = await getScreenerSymbols();
+  } catch (e) {
+    log(`Realtime Trades: Failed to fetch symbol list — ${e.message}`, 'error');
+    return [];
+  }
+
+  if (symbols.length === 0) {
+    log('Realtime Trades: No symbols found', 'warn');
+    return [];
+  }
+
+  log(`Starting: Realtime Trades for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const rows = await fetchSymbolTrades(symbol);
+      if (rows && rows.length > 0) {
+        allRows.push(...rows);
+        return rows;
+      }
+      return [];
+    },
+    {
+      concurrency: 4,
+      delayMs: 150,
+      label: 'Realtime Trades',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Realtime Trades ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Realtime Trades: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
   return allRows;
 }
 
@@ -2149,7 +2558,9 @@ async function insertToSupabase(table, rows) {
   const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes', 'nasdaq_summary', 'nasdaq_basic_quotes'];
   const upsertHistorical = table === 'nasdaq_historical';
   const upsertOptionChain = table === 'nasdaq_option_chain';
-  const useUpsert = upsertTables.includes(table) || upsertHistorical || upsertOptionChain;
+  const upsertChart = table === 'nasdaq_chart';
+  const upsertRealtimeTrades = table === 'nasdaq_realtime_trades';
+  const useUpsert = upsertTables.includes(table) || upsertHistorical || upsertOptionChain || upsertChart || upsertRealtimeTrades;
 
   const batchSize = 500;
   const concurrency = 5;
@@ -2173,6 +2584,12 @@ async function insertToSupabase(table, rows) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,date', ignoreDuplicates: false }));
       } else if (upsertOptionChain) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,expiry_date,strike,load_date', ignoreDuplicates: false }));
+      } else if (upsertChart) {
+        // Chart: timestamp is the unique key — only insert NEW minutes, skip existing
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,timestamp', ignoreDuplicates: true }));
+      } else if (upsertRealtimeTrades) {
+        // Realtime Trades: time_text + load_date is the unique key — only insert NEW trades, skip existing
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,time_text,load_date', ignoreDuplicates: true }));
       } else if (useUpsert) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
       } else {
@@ -2190,6 +2607,10 @@ async function insertToSupabase(table, rows) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,date', ignoreDuplicates: false }));
               } else if (upsertOptionChain) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,expiry_date,strike,load_date', ignoreDuplicates: false }));
+              } else if (upsertChart) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,timestamp', ignoreDuplicates: true }));
+              } else if (upsertRealtimeTrades) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,time_text,load_date', ignoreDuplicates: true }));
               } else if (useUpsert) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
               } else {
@@ -2236,6 +2657,8 @@ async function insertToSupabase(table, rows) {
 async function updateStats() {
   if (!supabaseClient) return;
   const tables = [
+    { name: 'nasdaq_chart', statId: 'stat-chart', metaId: 'meta-chart' },
+    { name: 'nasdaq_realtime_trades', statId: 'stat-rt', metaId: 'meta-rt' },
     { name: 'nasdaq_stocks', statId: 'stat-stocks', metaId: 'meta-stocks' },
     { name: 'nasdaq_basic_quotes', statId: 'stat-basic', metaId: 'meta-basic' },
     { name: 'nasdaq_quotes', statId: 'stat-quotes', metaId: 'meta-quotes' },
@@ -2308,6 +2731,8 @@ function generateCSVFiles(data, tableName, maxBytes = 5 * 1024 * 1024) {
 
 function getTablesForAPI(apiId) {
   switch (apiId) {
+    case 'chart': return ['nasdaq_chart'];
+    case 'realtime_trades': return ['nasdaq_realtime_trades'];
     case 'screener': return ['nasdaq_stocks'];
     case 'basic_quotes': return ['nasdaq_basic_quotes'];
     case 'quotes': return ['nasdaq_quotes'];
@@ -2320,7 +2745,9 @@ function getTablesForAPI(apiId) {
 
 async function fetchAndUpsertAPI(api) {
   let data;
-  if (api.id === 'screener') data = await loadScreener();
+  if (api.id === 'chart') data = await loadChart();
+  else if (api.id === 'realtime_trades') data = await loadRealtimeTrades();
+  else if (api.id === 'screener') data = await loadScreener();
   else if (api.id === 'basic_quotes') data = await loadBasicQuotes();
   else if (api.id === 'quotes') data = await loadQuotes();
   else if (api.id === 'historical') data = await loadHistorical();
