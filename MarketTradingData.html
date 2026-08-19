@@ -853,11 +853,11 @@
     <div class="settings-grid">
       <div class="input-group">
         <label>Backend key</label>
-        <input type="text" id="backendUrl" placeholder="https://your-app.vercel.app" value="">
+        <input type="text" id="backendUrl" placeholder="https://nasdaq-historical-api.vercel.app" value="https://nasdaq-historical-api.vercel.app">
       </div>
       <div class="input-group">
         <label>Bridge</label>
-        <input type="text" id="sbUrl" placeholder="https://your-project.supabase.co" value="https://ppdmhmrmmwnbvnfilcdh.supabase.co">
+        <input type="text" id="sbUrl" placeholder="https://your-project.supabase.co" value="https://mushchoxbywxcpfmgavj.supabase.co">
       </div>
       <div class="input-group">
         <label>Security Key</label>
@@ -962,6 +962,7 @@
 // ============================================================
 
 const NASDAQ_ENDPOINTS = [
+  { id: 'market_movers', name: 'Market Movers', path: '/api/marketmovers', description: 'Top movers — Stocks, ETFs & Mutual Funds (insert-only snapshots)', table: 'nasdaq_movers_stock_activity', status: 'active' },
   { id: 'chart', name: 'Chart Data', path: '/api/quote/{symbol}/chart?assetclass=stocks&charttype=rs', description: 'Intraday price chart data for a symbol (updates every minute)', table: 'nasdaq_chart', status: 'active' },
   { id: 'realtime_trades', name: 'Realtime Trades', path: '/api/quote/{symbol}/realtime-trades', description: 'Real-time trade records for a symbol (updates every 30 seconds)', table: 'nasdaq_realtime_trades', status: 'active' },
   { id: 'screener', name: 'Stock Screener', path: '/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq', description: 'List all stocks with price, change, market cap — FULL UNIVERSE', table: 'nasdaq_stocks', status: 'active' },
@@ -970,6 +971,20 @@ const NASDAQ_ENDPOINTS = [
   { id: 'historical', name: 'Historical Prices', path: '/api/quote/{symbol}/historical', description: 'Daily OHLCV price history for a symbol', table: 'nasdaq_historical', status: 'active' },
   { id: 'summary', name: 'Quote Summary', path: '/api/quote/{symbol}/summary?assetclass=stocks', description: 'Key stats: sector, industry, market cap, volume, yield, bid/ask', table: 'nasdaq_summary', status: 'active' },
   { id: 'option_chain', name: 'Option Chain', path: '/api/quote/{symbol}/option-chain?assetclass=stocks', description: 'Options chain with calls and puts, strikes, bid/ask, volume, and open interest', table: 'nasdaq_option_chain', status: 'active' }
+];
+
+// Market Movers — maps each asset class × category to its own insert-only table
+const MOVER_TABLES = [
+  { assetClass: 'STOCKS', category: 'MostActiveByShareVolume', table: 'nasdaq_movers_stock_activity' },
+  { assetClass: 'STOCKS', category: 'MostAdvanced', table: 'nasdaq_movers_stock_advanced' },
+  { assetClass: 'STOCKS', category: 'MostDeclined', table: 'nasdaq_movers_stock_declined' },
+  { assetClass: 'STOCKS', category: 'MostActiveByDollarVolume', table: 'nasdaq_movers_stock_dollarvol' },
+  { assetClass: 'STOCKS', category: 'Nasdaq100Movers', table: 'nasdaq_movers_stock_nasdaq100' },
+  { assetClass: 'ETF', category: 'MostActiveByShareVolume', table: 'nasdaq_movers_etf_activity' },
+  { assetClass: 'ETF', category: 'MostAdvanced', table: 'nasdaq_movers_etf_advanced' },
+  { assetClass: 'ETF', category: 'MostDeclined', table: 'nasdaq_movers_etf_declined' },
+  { assetClass: 'MUTUALFUNDS', category: 'MostAdvanced', table: 'nasdaq_movers_funds_advanced' },
+  { assetClass: 'MUTUALFUNDS', category: 'MostDeclined', table: 'nasdaq_movers_funds_declined' }
 ];
 
 let selectedAPIs = new Set(['screener']);
@@ -1320,7 +1335,7 @@ async function getScreenerSymbols() {
 // fetchFn: async (symbol) => data   — should throw on failure
 // options: { concurrency, delayMs, label, onBatch, onProgress }
 async function parallelFetchAll(symbols, fetchFn, options = {}) {
-  const { concurrency = 4, delayMs = 150, label = 'Fetch', onBatch, onProgress } = options;
+  const { concurrency = 4, delayMs = 150, label = 'Fetch', onBatch, onProgress, logEvery = 20 } = options;
   const results = [];
   let successCount = 0;
   let failCount = 0;
@@ -1353,7 +1368,7 @@ async function parallelFetchAll(symbols, fetchFn, options = {}) {
 
     const processed = Math.min(i + concurrency, total);
     if (onProgress) onProgress(processed, total, successCount, failCount);
-    if ((processed) % 20 === 0 || processed === total) {
+    if ((processed) % logEvery === 0 || processed === total) {
       const pct = Math.round((processed / total) * 100);
       setProgress(pct, `${label} ${processed}/${total} · ${successCount} ok · ${failCount} fail`);
       log(`${label}: ${processed}/${total} symbols · ${successCount} ok · ${failCount} fail`);
@@ -1410,21 +1425,40 @@ async function startLoading() {
 
     try {
       let data;
-      if (api.id === 'chart') data = await loadChart();
-      else if (api.id === 'realtime_trades') data = await loadRealtimeTrades();
-      else if (api.id === 'screener') data = await loadScreener();
-      else if (api.id === 'basic_quotes') data = await loadBasicQuotes();
-      else if (api.id === 'quotes') data = await loadQuotes();
-      else if (api.id === 'historical') data = await loadHistorical();
-      else if (api.id === 'summary') data = await loadSummary();
-      else if (api.id === 'option_chain') data = await loadOptionChain();
-
-      if (data && data.length > 0) {
-        log(`${api.name}: ${data.length} records fetched`, 'success');
-        showPreview(api.name, data.slice(0, 10));
-        await insertToSupabase(api.table, data);
+      if (api.id === 'market_movers') {
+        // Multi-table endpoint: loadMarketMovers() returns groups of { table, rows }
+        const groups = await loadMarketMovers();
+        if (groups && groups.length > 0) {
+          const totalRows = groups.reduce((sum, g) => sum + (g.rows?.length || 0), 0);
+          log(`Market Movers: ${totalRows} records fetched across ${groups.length} tables`, 'success');
+          const first = groups.find(g => g.rows && g.rows.length > 0);
+          if (first) showPreview(api.name, first.rows.slice(0, 10));
+          for (const group of groups) {
+            if (group.rows && group.rows.length > 0) {
+              log(`Market Movers → ${group.table}: ${group.rows.length} rows`, 'info');
+              await insertToSupabase(group.table, group.rows);
+            }
+          }
+        } else {
+          log(`${api.name}: No data returned`, 'warn');
+        }
       } else {
-        log(`${api.name}: No data returned`, 'warn');
+        if (api.id === 'chart') data = await loadChart();
+        else if (api.id === 'realtime_trades') data = await loadRealtimeTrades();
+        else if (api.id === 'screener') data = await loadScreener();
+        else if (api.id === 'basic_quotes') data = await loadBasicQuotes();
+        else if (api.id === 'quotes') data = await loadQuotes();
+        else if (api.id === 'historical') data = await loadHistorical();
+        else if (api.id === 'summary') data = await loadSummary();
+        else if (api.id === 'option_chain') data = await loadOptionChain();
+
+        if (data && data.length > 0) {
+          log(`${api.name}: ${data.length} records fetched`, 'success');
+          showPreview(api.name, data.slice(0, 10));
+          await insertToSupabase(api.table, data);
+        } else {
+          log(`${api.name}: No data returned`, 'warn');
+        }
       }
     } catch (e) {
       log(`${api.name} failed: ${e.message}`, 'error');
@@ -1452,6 +1486,91 @@ async function startLoading() {
       if (autoReloadEnabled && !isLoading) startLoading();
     }, 2000);
   }
+}
+
+// ============================================================
+// Market Movers Loader (v1.0.3)
+// ============================================================
+//
+// NASDAQ /api/marketmovers — ONE call returns movers for STOCKS, ETF,
+// and MUTUALFUNDS. Each category (MostActiveByShareVolume, MostAdvanced,
+// MostDeclined, MostActiveByDollarVolume, Nasdaq100Movers) has its own
+// insert-only table.
+//
+// Category shape (from marketmovers.json):
+//   data[assetClass][category] = {
+//     dataAsOf: "Data as of Aug 19, 2026 4:00 PM ET",
+//     lastTradeTimestamp: "Aug 19, 2026 4:00 PM ET",
+//     table: { rows: [{ symbol, name, lastSalePrice, lastSaleChange, change, deltaIndicator }] }
+//   }
+//
+// Insert-only design: no UNIQUE constraints on the 10 tables →
+// insertToSupabase() uses the plain insert() fast path (zero conflict overhead).
+// Every Loop run appends a fresh dated snapshot — history accumulates.
+//
+// Returns: array of groups [ { table: 'nasdaq_movers_...', rows: [...] }, ... ]
+// ============================================================
+
+async function loadMarketMovers() {
+  const cleanText = (val) => {
+    if (val === null || val === undefined) return null;
+    const s = val.toString().trim();
+    return s.length > 0 && s !== 'N/A' && s !== 'n/a' ? s : null;
+  };
+
+  const toPrice = (val) => {
+    if (val === null || val === undefined) return null;
+    const cleaned = val.toString().replace(/[$,]/g, '').trim();
+    if (cleaned === '' || cleaned === '--' || cleaned === '-') return null;
+    const n = parseFloat(cleaned);
+    return isNaN(n) ? null : n;
+  };
+
+  log('Starting: Market Movers — fetching all asset classes in one call');
+  setProgress(5, 'Fetching Market Movers...');
+
+  const json = await fetchNasdaq('/api/marketmovers');
+  const d = json?.data;
+  if (!d) {
+    log('Market Movers: no data in response', 'warn');
+    return [];
+  }
+
+  const groups = [];
+  let totalRows = 0;
+
+  for (const def of MOVER_TABLES) {
+    const cat = d[def.assetClass]?.[def.category];
+    if (!cat || !cat.table || !Array.isArray(cat.table.rows)) {
+      log(`Market Movers: skipped ${def.assetClass}.${def.category} (no rows)`, 'info');
+      continue;
+    }
+
+    const dataAsOf = cleanText(cat.dataAsOf);
+    const lastTradeTimestamp = cleanText(cat.lastTradeTimestamp);
+    const rows = [];
+
+    for (const r of cat.table.rows) {
+      rows.push({
+        symbol: cleanText(r.symbol),
+        name: cleanText(r.name),
+        last_sale_price: toPrice(r.lastSalePrice),
+        last_sale_change: toPrice(r.lastSaleChange),
+        change: cleanText(r.change),              // raw "+7.25%" | "167,984,229.70"
+        delta_indicator: cleanText(r.deltaIndicator),
+        data_as_of: dataAsOf,                     // "Data as of Aug 19, 2026 4:00 PM ET"
+        last_trade_timestamp: lastTradeTimestamp  // "Aug 19, 2026 4:00 PM ET"
+      });
+    }
+
+    groups.push({ table: def.table, rows });
+    totalRows += rows.length;
+    log(`Market Movers → ${def.table}: ${rows.length} rows`, 'success');
+  }
+
+  setProgress(30, `Market Movers: ${totalRows} rows across ${groups.length} tables`);
+  log(`Market Movers: ${totalRows} rows across ${groups.length} tables fetched`, 'success');
+  return groups;
 }
 
 // ============================================================
@@ -1791,7 +1910,7 @@ async function loadChart() {
     return [];
   }
 
-  log(`Starting: Chart Data for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+  log(`Starting: Chart Data for ALL ${symbols.length} NASDAQ symbols · 10 concurrent · 25ms gap · 10s timeout (supersonic)`);
 
   const allRows = [];
 
@@ -1806,9 +1925,10 @@ async function loadChart() {
       return [];
     },
     {
-      concurrency: 4,
-      delayMs: 150,
+      concurrency: 10,
+      delayMs: 25,
       label: 'Chart Data',
+      logEvery: 50,
       onProgress: (processed, total, ok, fail) => {
         const pct = Math.round((processed / total) * 100);
         setProgress(pct, `Chart Data ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
@@ -1909,10 +2029,14 @@ async function loadRealtimeTrades() {
       return [];
     }
 
-    // Extract trade rows defensively
+    // Extract trade rows defensively (multiple paths + deepFind fallback)
     let rows = d.rows || [];
-    if (!rows && Array.isArray(d)) rows = d;
-    if (!rows && json?.rows) rows = json.rows;
+    if ((!rows || rows.length === 0) && Array.isArray(d)) rows = d;
+    if ((!rows || rows.length === 0) && json?.rows) rows = json.rows;
+    if (!rows || rows.length === 0) {
+      const found = deepFind(json, ['rows', 'trades', 'tradeRecords', 'data']);
+      if (Array.isArray(found)) rows = found;
+    }
     if (!Array.isArray(rows)) rows = [];
 
     // Extract topTable summary (same for all rows in this batch)
@@ -1931,10 +2055,10 @@ async function loadRealtimeTrades() {
     const sym = symbol.toString().toUpperCase();
     const result = [];
 
-    for (const row of rows) {
-      const timeText = cleanText(deepFind(row, ['time', 'Time', 'timestamp', 'tradeTime', 'trade_time'])) ||
-        cleanText(deepFind(row, ['dateTime', 'date_time']));
-      if (timeText === null) continue; // skip rows without a time identifier
+    const stamp = new Date().toLocaleTimeString('en-US', { hour12: false }) + '.' + new Date().getMilliseconds();
+    for (let idx = 0; idx < rows.length; idx++) {
+      const row = rows[idx];
+      const timeText = cleanText(deepFind(row, ['time', 'Time', 'timestamp', 'tradeTime', 'trade_time', 'dateTime', 'date_time', 'executionTime', 'transactionTime', 'TimeStamp', 'TIMESTAMP', 'tradeTimeString', 'displayTime'])) || `${stamp}:${idx}`;
 
       result.push({
         symbol: sym,
@@ -2657,6 +2781,16 @@ async function insertToSupabase(table, rows) {
 async function updateStats() {
   if (!supabaseClient) return;
   const tables = [
+    { name: 'nasdaq_movers_stock_activity', statId: 'stat-mm1', metaId: 'meta-mm1' },
+    { name: 'nasdaq_movers_stock_advanced', statId: 'stat-mm2', metaId: 'meta-mm2' },
+    { name: 'nasdaq_movers_stock_declined', statId: 'stat-mm3', metaId: 'meta-mm3' },
+    { name: 'nasdaq_movers_stock_dollarvol', statId: 'stat-mm4', metaId: 'meta-mm4' },
+    { name: 'nasdaq_movers_stock_nasdaq100', statId: 'stat-mm5', metaId: 'meta-mm5' },
+    { name: 'nasdaq_movers_etf_activity', statId: 'stat-mm6', metaId: 'meta-mm6' },
+    { name: 'nasdaq_movers_etf_advanced', statId: 'stat-mm7', metaId: 'meta-mm7' },
+    { name: 'nasdaq_movers_etf_declined', statId: 'stat-mm8', metaId: 'meta-mm8' },
+    { name: 'nasdaq_movers_funds_advanced', statId: 'stat-mm9', metaId: 'meta-mm9' },
+    { name: 'nasdaq_movers_funds_declined', statId: 'stat-mm10', metaId: 'meta-mm10' },
     { name: 'nasdaq_chart', statId: 'stat-chart', metaId: 'meta-chart' },
     { name: 'nasdaq_realtime_trades', statId: 'stat-rt', metaId: 'meta-rt' },
     { name: 'nasdaq_stocks', statId: 'stat-stocks', metaId: 'meta-stocks' },
@@ -2731,6 +2865,7 @@ function generateCSVFiles(data, tableName, maxBytes = 5 * 1024 * 1024) {
 
 function getTablesForAPI(apiId) {
   switch (apiId) {
+    case 'market_movers': return MOVER_TABLES.map(t => t.table);
     case 'chart': return ['nasdaq_chart'];
     case 'realtime_trades': return ['nasdaq_realtime_trades'];
     case 'screener': return ['nasdaq_stocks'];
@@ -2745,6 +2880,17 @@ function getTablesForAPI(apiId) {
 
 async function fetchAndUpsertAPI(api) {
   let data;
+  if (api.id === 'market_movers') {
+    const groups = await loadMarketMovers();
+    if (groups && groups.length > 0) {
+      for (const group of groups) {
+        if (group.rows && group.rows.length > 0) {
+          await insertToSupabase(group.table, group.rows);
+        }
+      }
+    }
+    return groups;
+  }
   if (api.id === 'chart') data = await loadChart();
   else if (api.id === 'realtime_trades') data = await loadRealtimeTrades();
   else if (api.id === 'screener') data = await loadScreener();
