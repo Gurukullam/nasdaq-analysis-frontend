@@ -965,7 +965,7 @@ const NASDAQ_ENDPOINTS = [
   { id: 'market_movers', name: 'Market Movers', path: '/api/marketmovers', description: 'Top movers — Stocks, ETFs & Mutual Funds (insert-only snapshots)', table: 'nasdaq_movers_stock_activity', status: 'active' },
   { id: 'chart', name: 'Chart Data', path: '/api/quote/{symbol}/chart?assetclass=stocks&charttype=rs', description: 'Intraday price chart data for a symbol (updates every minute)', table: 'nasdaq_chart', status: 'active' },
   { id: 'realtime_trades', name: 'Realtime Trades', path: '/api/quote/{symbol}/realtime-trades', description: 'Real-time trade records for a symbol (updates every 30 seconds)', table: 'nasdaq_realtime_trades', status: 'active' },
-  { id: 'screener', name: 'Stock Screener', path: '/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq', description: 'List all stocks with price, change, market cap — FULL UNIVERSE', table: 'nasdaq_stocks', status: 'active' },
+  { id: 'screener', name: 'Stock Screener', path: '/api/screener/stocks?tableonly=true&limit=500000&exchange=nasdaq', description: 'List all stocks with price, change, market cap — FULL UNIVERSE (one call, no truncation)', table: 'nasdaq_stocks', status: 'active' },
   { id: 'basic_quotes', name: 'Current Quote (Basic)', path: '/api/quote/basic?&symbol={symbol}|stocks', description: 'Lightweight ticker: price, change, percent change, and delta indicator only', table: 'nasdaq_basic_quotes', status: 'active' },
   { id: 'quotes', name: 'Quote Info', path: '/api/quote/{symbol}/info?assetclass=stocks', description: 'Detailed quote data for individual symbols', table: 'nasdaq_quotes', status: 'active' },
   { id: 'historical', name: 'Historical Prices', path: '/api/quote/{symbol}/historical', description: 'Daily OHLCV price history for a symbol', table: 'nasdaq_historical', status: 'active' },
@@ -1017,6 +1017,23 @@ function getUSLoadDate() {
 
 function getUSLoadDateDisplay() {
   return new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function getUSLoadTimestamp() {
+  // Returns US NASDAQ wall-clock ISO 8601 timestamp with offset + milliseconds,
+  // e.g. "2026-08-20T19:20:27.463-04:00". Unique per load → append-only snapshots.
+  const now = new Date();
+  const usStr = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false });
+  const [datePart, timePart] = usStr.split(', ');
+  const [m, d, y] = datePart.split('/');
+  let [hh, mm, ss] = timePart.split(':');
+  if (hh === '24') hh = '00'; // en-US 24h quirk at midnight
+  const ms = String(now.getMilliseconds()).padStart(3, '0');
+  const date = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  const time = `${hh}:${mm}:${ss}.${ms}`;
+  const tzName = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York', timeZoneName: 'short' }).split(' ').pop();
+  const offset = tzName === 'EDT' ? '-04:00' : '-05:00';
+  return `${date}T${time}${offset}`;
 }
 
 function log(msg, type = 'info') {
@@ -1324,7 +1341,7 @@ async function fetchNasdaq(path, timeoutMs = 20000) {
 async function getScreenerSymbols() {
   if (screenerSymbolsCache) return screenerSymbolsCache;
   log('Fetching NASDAQ symbol list...');
-  const data = await fetchNasdaq('/api/screener/stocks?tableonly=true&limit=5000&exchange=nasdaq');
+  const data = await fetchNasdaq('/api/screener/stocks?tableonly=true&limit=500000&exchange=nasdaq');
   const rows = data?.data?.table?.rows || [];
   screenerSymbolsCache = rows.map(r => r.symbol).filter(s => s);
   log(`${screenerSymbolsCache.length} NASDAQ symbols cached for session`, 'success');
@@ -1583,13 +1600,37 @@ async function loadScreener() {
   setProgress(5, 'Fetching stock screener...');
 
   const exchangeParam = selectedExchange ? `&exchange=${selectedExchange}` : '';
-  const data = await fetchNasdaq(`/api/screener/stocks?tableonly=true&limit=5000${exchangeParam}`);
-  const totalRecords = data?.data?.totalrecords || 0;
-  const rows = data?.data?.table?.rows || [];
-  log(`Screener API returned ${rows.length} rows (totalrecords: ${totalRecords})`, 'success');
-  if (rows.length === 0) { log('No stock data returned', 'err'); return []; }
+  const LIMIT = 500000; // Full universe — NASDAQ never caps below this
+  let allRows = [];
+  let totalRecords = 0;
 
-  const mapped = rows.map(r => ({
+  // Page 1 — the complete dataset arrives in ONE call
+  const data = await fetchNasdaq(`/api/screener/stocks?tableonly=true&limit=${LIMIT}${exchangeParam}`);
+  totalRecords = parseInt(data?.data?.totalrecords || '0', 10);
+  let rows = data?.data?.table?.rows || [];
+  allRows = allRows.concat(rows);
+  log(`Screener API returned ${allRows.length} rows (totalrecords: ${totalRecords})`, 'success');
+
+  // Pagination safety net: if NASDAQ caps a single response below totalrecords,
+  // keep pulling pages with &offset= until the FULL universe is captured.
+  let offset = allRows.length;
+  while (totalRecords > 0 && allRows.length < totalRecords && offset < totalRecords) {
+    if (cancelRequested) {
+      log(`Screener pagination cancelled at ${allRows.length}/${totalRecords} rows`, 'warn');
+      break;
+    }
+    const page = await fetchNasdaq(`/api/screener/stocks?tableonly=true&limit=${LIMIT}&offset=${offset}${exchangeParam}`);
+    const pageRows = page?.data?.table?.rows || [];
+    if (pageRows.length === 0) break; // no more data available
+    allRows = allRows.concat(pageRows);
+    offset = allRows.length;
+    setProgress(10 + Math.round((allRows.length / totalRecords) * 40), `Screener: ${allRows.length}/${totalRecords} rows...`);
+    log(`Screener: fetched ${allRows.length}/${totalRecords} rows`, 'info');
+  }
+
+  if (allRows.length === 0) { log('No stock data returned', 'err'); return []; }
+
+  const mapped = allRows.map(r => ({
     symbol: r.symbol || '',
     name: r.name || '',
     last_sale: r.lastsale || '',
@@ -1600,7 +1641,7 @@ async function loadScreener() {
     url: r.url || ''
   }));
 
-  setProgress(20, `Preparing ${mapped.length} stocks for insert...`);
+  setProgress(20, `Preparing ${mapped.length} stocks for single-logical insert...`);
   return mapped;
 }
 
@@ -2165,7 +2206,16 @@ async function loadQuotes() {
   const { data: symbolRows, error } = await query;
   if (error || !symbolRows || symbolRows.length === 0) { log('No symbols found in nasdaq_stocks for today. Run Stock Screener first.', 'warn'); return []; }
 
-  let symbols = symbolRows.map(r => r.symbol);
+  // Multi-load history: nasdaq_stocks may hold several same-day snapshots,
+  // so dedupe to unique symbols (first occurrence — keeps market_cap order).
+  const seen = new Set();
+  let symbols = [];
+  for (const row of symbolRows) {
+    if (!seen.has(row.symbol)) {
+      seen.add(row.symbol);
+      symbols.push(row.symbol);
+    }
+  }
   const totalAvailable = symbols.length;
   if (quoteCount !== 'ALL') symbols = symbols.slice(0, parseInt(quoteCount));
   if (resumeIndex > 0 && resumeIndex < symbols.length) symbols = symbols.slice(resumeIndex);
@@ -2677,21 +2727,33 @@ async function insertToSupabase(table, rows) {
   const loadDate = getUSLoadDate();
   // Mutate in-place to avoid creating millions of new objects (saves memory + GC pressure)
   rows.forEach(r => r.load_date = loadDate);
+
+  // Stock Screener: stamp the exact US NASDAQ wall-clock time so EVERY load
+  // becomes a NEW snapshot (append-only multi-load history — no overwrite).
+  const isScreener = table === 'nasdaq_stocks';
+  const loadTimestamp = isScreener ? getUSLoadTimestamp() : null;
+  if (loadTimestamp) rows.forEach(r => r.load_timestamp = loadTimestamp);
+
   const rowsWithDate = rows;
 
-  const upsertTables = ['nasdaq_stocks', 'nasdaq_quotes', 'nasdaq_summary', 'nasdaq_basic_quotes'];
+  // Screener: the complete universe arrives in ONE fetch → single logical insert.
+  // Larger batches + lower concurrency land the full snapshot in ~2-3 requests.
+  const upsertTables = ['nasdaq_quotes', 'nasdaq_summary', 'nasdaq_basic_quotes'];
   const upsertHistorical = table === 'nasdaq_historical';
   const upsertOptionChain = table === 'nasdaq_option_chain';
   const upsertChart = table === 'nasdaq_chart';
   const upsertRealtimeTrades = table === 'nasdaq_realtime_trades';
   const useUpsert = upsertTables.includes(table) || upsertHistorical || upsertOptionChain || upsertChart || upsertRealtimeTrades;
 
-  const batchSize = 500;
-  const concurrency = 5;
+  const batchSize = isScreener ? 2000 : 500;
+  const concurrency = isScreener ? 2 : 5;
   const total = rowsWithDate.length;
   let inserted = 0;
   let failed = 0;
 
+  if (isScreener) {
+    log(`Stock Screener: single-logical insert of complete snapshot — ${total.toLocaleString()} rows · load_timestamp: ${loadTimestamp}`, 'info');
+  }
   log(`${useUpsert ? 'Upserting' : 'Inserting'} ${total.toLocaleString()} rows into ${table} (batch: ${batchSize}, concurrency: ${concurrency})...`);
 
   // Build all batches up-front
