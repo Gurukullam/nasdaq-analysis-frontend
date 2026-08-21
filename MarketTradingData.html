@@ -1641,7 +1641,7 @@ async function loadScreener() {
     url: r.url || ''
   }));
 
-  setProgress(20, `Preparing ${mapped.length} stocks for single-logical insert...`);
+  setProgress(20, `Preparing ${mapped.length} stocks for data-state dedupe upsert...`);
   return mapped;
 }
 
@@ -1695,24 +1695,6 @@ async function loadBasicQuotes() {
     return isNaN(n) ? null : n;
   };
 
-  // Deep-search any value inside an object tree (including arrays)
-  const deepFind = (obj, keys) => {
-    if (obj === null || obj === undefined) return undefined;
-    if (typeof obj !== 'object') return undefined;
-    for (const k of keys) {
-      if (k in obj && obj[k] !== null && obj[k] !== undefined && obj[k] !== '') {
-        return obj[k];
-      }
-    }
-    for (const v of Object.values(obj)) {
-      if (v && typeof v === 'object') {
-        const found = deepFind(v, keys);
-        if (found !== undefined) return found;
-      }
-    }
-    return undefined;
-  };
-
   const fetchSymbolBasic = async (symbol) => {
     const path = `/api/quote/basic?symbol=${encodeURIComponent(symbol + '|stocks')}`;
     let json;
@@ -1727,18 +1709,37 @@ async function loadBasicQuotes() {
       return null;
     }
 
+    // OPTIMIZED (v1.0.6): direct property access on the known response root —
+    // no recursive deepFind overhead (2-3× faster per symbol for ALL mode).
+    let d = json?.data;
+    if (!d && json?.symbol) d = json;                                  // unwrapped flat response
+    if (!d && Array.isArray(json) && json.length > 0) d = json[0];     // array response
+    if (!d || typeof d !== 'object') {
+      log(`Basic Quote [${symbol}]: no data in response`, 'warn');
+      return null;
+    }
+
+    // Light multi-key fallback across direct properties only (no tree scan)
+    const f = (...keys) => {
+      for (const k of keys) {
+        const v = d[k];
+        if (v !== undefined && v !== null && v !== '') return v;
+      }
+      return undefined;
+    };
+
     const result = {
-      symbol: cleanText(deepFind(json, ['symbol', 'Symbol', 'SYMBOL'])) || symbol,
-      last_sale_price: toPrice(deepFind(json, ['lastSalePrice', 'lastSale', 'lastsale', 'last', 'Last', 'price', 'Price'])),
-      net_change: toPrice(deepFind(json, ['netChange', 'net_change', 'NetChange', 'change', 'Change', 'netChangePrice'])),
-      percentage_change: cleanText(deepFind(json, ['percentageChange', 'percentage_change', 'PercentageChange', 'percentChange', 'pctChange', 'pctchange', 'changePercent'])),
-      delta_indicator: cleanText(deepFind(json, ['deltaIndicator', 'delta_indicator', 'DeltaIndicator', 'delta', 'Delta'])),
+      symbol: cleanText(f('symbol', 'Symbol', 'SYMBOL')) || symbol,
+      last_sale_price: toPrice(f('lastSalePrice', 'lastSale', 'lastsale', 'last', 'Last', 'price', 'Price')),
+      net_change: toPrice(f('netChange', 'net_change', 'NetChange', 'change', 'Change', 'netChangePrice')),
+      percentage_change: cleanText(f('percentageChange', 'percentage_change', 'PercentageChange', 'percentChange', 'pctChange', 'pctchange', 'changePercent')),
+      delta_indicator: cleanText(f('deltaIndicator', 'delta_indicator', 'DeltaIndicator', 'delta', 'Delta')),
       // Kept — may populate during market hours
-      open_price: toPrice(deepFind(json, ['openPrice', 'open', 'Open', 'OPEN'])),
-      high_price: toPrice(deepFind(json, ['highPrice', 'high', 'High', 'HIGH'])),
-      low_price: toPrice(deepFind(json, ['lowPrice', 'low', 'Low', 'LOW'])),
-      previous_close: toPrice(deepFind(json, ['previousClosePrice', 'previousClose', 'prevClose', 'closePrice', 'priorClose'])),
-      volume: toBigInt(deepFind(json, ['volume', 'Volume', 'shareVolume', 'totalVolume', 'vol']))
+      open_price: toPrice(f('openPrice', 'open', 'Open', 'OPEN')),
+      high_price: toPrice(f('highPrice', 'high', 'High', 'HIGH')),
+      low_price: toPrice(f('lowPrice', 'low', 'Low', 'LOW')),
+      previous_close: toPrice(f('previousClosePrice', 'previousClose', 'prevClose', 'closePrice', 'priorClose')),
+      volume: toBigInt(f('volume', 'Volume', 'shareVolume', 'totalVolume', 'vol'))
     };
 
     return result;
@@ -1776,7 +1777,7 @@ async function loadBasicQuotes() {
     return [];
   }
 
-  log(`Starting: Current Quote (Basic) for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+  log(`Starting: Current Quote (Basic) for ALL ${symbols.length} NASDAQ symbols · 10 concurrent · 25ms gap (supersonic)`);
 
   const allRows = [];
 
@@ -1791,9 +1792,10 @@ async function loadBasicQuotes() {
       return null;
     },
     {
-      concurrency: 4,
-      delayMs: 150,
+      concurrency: 10,
+      delayMs: 25,
       label: 'Current Quote (Basic)',
+      logEvery: 50,
       onProgress: (processed, total, ok, fail) => {
         const pct = Math.round((processed / total) * 100);
         setProgress(pct, `Current Quote (Basic) ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
@@ -2004,8 +2006,15 @@ async function loadChart() {
 //     "message": "Real-Time trades not available"
 //   }
 //
-// Unique constraint: (symbol, time_text, load_date) with ignoreDuplicates: true
-// → Loop re-runs insert ONLY new trades not already in Supabase.
+// Unique constraint (v1.0.5): UNIQUE NULLS NOT DISTINCT
+//   (symbol, nls_volume, previous_close, today_high_low, fifty_two_week_range)
+// → history = market data CHANGES; identical re-loads are SKIPPED.
+//
+// FIX (v1.0.5): The free NASDAQ API always returns rows: [] with
+//   message "Real-Time trades not available", but the topTable summary
+//   is REAL data (nls_volume / previous_close / today_high_low /
+//   fifty_two_week_range). We therefore ALWAYS store one summary snapshot
+//   row per symbol so the table finally fills 24/7 — even outside market hours.
 //
 // ============================================================
 
@@ -2087,14 +2096,26 @@ async function loadRealtimeTrades() {
     const todayHighLow = cleanText(topRow.todayHighLow);
     const fiftyTwoWeekRange = cleanText(topRow.fiftyTwoWeekHighLow);
 
-    // If market is closed (rows empty), still log totalRecords for visibility
-    if (rows.length === 0) {
-      log(`Realtime Trades [${symbol}]: ${d.totalRecords || 0} trades (market may be closed)`, 'info');
-      return [];
-    }
-
     const sym = symbol.toString().toUpperCase();
     const result = [];
+
+    // FIX: ALWAYS emit a per-symbol summary snapshot row. When the free API
+    // returns zero trade rows, the topTable summary (nls_volume etc.) is still
+    // real data — dedupe is on those factual values, so identical re-loads are
+    // skipped and market CHANGES append new rows.
+    if (rows.length === 0) {
+      result.push({
+        symbol: sym,
+        price: null,
+        size: null,
+        time_text: null,
+        nls_volume: nlsVolume,
+        previous_close: previousClose,
+        today_high_low: todayHighLow,
+        fifty_two_week_range: fiftyTwoWeekRange
+      });
+      return result;
+    }
 
     const stamp = new Date().toLocaleTimeString('en-US', { hour12: false }) + '.' + new Date().getMilliseconds();
     for (let idx = 0; idx < rows.length; idx++) {
@@ -2148,7 +2169,7 @@ async function loadRealtimeTrades() {
     return [];
   }
 
-  log(`Starting: Realtime Trades for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+  log(`Starting: Realtime Trades for ALL ${symbols.length} NASDAQ symbols · 10 concurrent · 25ms gap (supersonic)`);
 
   const allRows = [];
 
@@ -2163,9 +2184,10 @@ async function loadRealtimeTrades() {
       return [];
     },
     {
-      concurrency: 4,
-      delayMs: 150,
+      concurrency: 10,
+      delayMs: 25,
       label: 'Realtime Trades',
+      logEvery: 50,
       onProgress: (processed, total, ok, fail) => {
         const pct = Math.round((processed / total) * 100);
         setProgress(pct, `Realtime Trades ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
@@ -2406,7 +2428,7 @@ async function loadHistorical() {
     return [];
   }
 
-  log(`Starting: Historical Prices for ALL ${symbols.length} NASDAQ symbols (${fromDate} to ${toDate}) · 4 concurrent · 150ms gap`);
+  log(`Starting: Historical Prices for ALL ${symbols.length} NASDAQ symbols (${fromDate} to ${toDate}) · 8 concurrent · 40ms gap`);
 
   const allRows = [];
 
@@ -2421,8 +2443,8 @@ async function loadHistorical() {
       return [];
     },
     {
-      concurrency: 4,
-      delayMs: 150,
+      concurrency: 8,
+      delayMs: 40,
       label: 'Historical Prices',
       onProgress: (processed, total, ok, fail) => {
         const pct = Math.round((processed / total) * 100);
@@ -2508,7 +2530,7 @@ async function loadSummary() {
     return [];
   }
 
-  log(`Starting: Quote Summary for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+  log(`Starting: Quote Summary for ALL ${symbols.length} NASDAQ symbols · 8 concurrent · 40ms gap`);
 
   const allRows = [];
 
@@ -2523,8 +2545,8 @@ async function loadSummary() {
       return null;
     },
     {
-      concurrency: 4,
-      delayMs: 150,
+      concurrency: 8,
+      delayMs: 40,
       label: 'Quote Summary',
       onProgress: (processed, total, ok, fail) => {
         const pct = Math.round((processed / total) * 100);
@@ -2689,7 +2711,7 @@ async function loadOptionChain() {
     return [];
   }
 
-  log(`Starting: Option Chain for ALL ${symbols.length} NASDAQ symbols · 4 concurrent · 150ms gap`);
+  log(`Starting: Option Chain for ALL ${symbols.length} NASDAQ symbols · 6 concurrent · 50ms gap`);
 
   const allRows = [];
 
@@ -2704,8 +2726,8 @@ async function loadOptionChain() {
       return [];
     },
     {
-      concurrency: 4,
-      delayMs: 150,
+      concurrency: 6,
+      delayMs: 50,
       label: 'Option Chain',
       onProgress: (processed, total, ok, fail) => {
         const pct = Math.round((processed / total) * 100);
@@ -2728,33 +2750,48 @@ async function insertToSupabase(table, rows) {
   // Mutate in-place to avoid creating millions of new objects (saves memory + GC pressure)
   rows.forEach(r => r.load_date = loadDate);
 
-  // Stock Screener: stamp the exact US NASDAQ wall-clock time when each data
-  // state is FIRST observed. Dedupe is on (symbol,last_sale,net_change,
-  // pct_change,market_cap) — identical re-loads are skipped, changes append.
-  const isScreener = table === 'nasdaq_stocks';
-  const loadTimestamp = isScreener ? getUSLoadTimestamp() : null;
-  if (loadTimestamp) rows.forEach(r => r.load_timestamp = loadTimestamp);
+  // Stamp the exact US NASDAQ wall-clock time on every row as informational
+  // metadata only — it is NOT part of any UNIQUE key. Dedupe is on the REAL
+  // factual data values of each table (data-state history, not time).
+  const loadTimestamp = getUSLoadTimestamp();
+  rows.forEach(r => r.load_timestamp = loadTimestamp);
 
   const rowsWithDate = rows;
 
-  // Screener: the full universe arrives in one fetch → single logical upsert.
-  // Larger batches + lower concurrency land the snapshot in ~2-3 requests.
-  const upsertTables = ['nasdaq_quotes', 'nasdaq_summary', 'nasdaq_basic_quotes'];
+  // Factual data-state conflict keys — every table dedupes on its real values:
   const upsertScreener = table === 'nasdaq_stocks';
+  const upsertRealtimeTrades = table === 'nasdaq_realtime_trades';
+  const upsertBasicQuotes = table === 'nasdaq_basic_quotes';
+  const upsertQuotes = table === 'nasdaq_quotes';
+  const upsertSummary = table === 'nasdaq_summary';
   const upsertHistorical = table === 'nasdaq_historical';
   const upsertOptionChain = table === 'nasdaq_option_chain';
   const upsertChart = table === 'nasdaq_chart';
-  const upsertRealtimeTrades = table === 'nasdaq_realtime_trades';
-  const useUpsert = upsertTables.includes(table) || upsertScreener || upsertHistorical || upsertOptionChain || upsertChart || upsertRealtimeTrades;
+  const useUpsert = upsertScreener || upsertRealtimeTrades || upsertBasicQuotes || upsertQuotes || upsertSummary || upsertHistorical || upsertOptionChain || upsertChart;
 
-  const batchSize = isScreener ? 2000 : 500;
-  const concurrency = isScreener ? 2 : 5;
+  const getConflictKey = () => {
+    if (upsertScreener) return 'symbol,last_sale,net_change,pct_change,market_cap';
+    if (upsertRealtimeTrades) return 'symbol,nls_volume,previous_close,today_high_low,fifty_two_week_range';
+    if (upsertBasicQuotes) return 'symbol,last_sale_price,net_change,percentage_change,delta_indicator,open_price,high_price,low_price,previous_close,volume';
+    if (upsertQuotes) return 'symbol,last_sale_price,net_change,percentage_change,volume,market_status,last_trade_timestamp,day_range';
+    if (upsertSummary) return 'symbol,one_year_target,today_high_low,share_volume,average_volume,previous_close,fifty_two_week_high_low,market_cap,annualized_dividend,yield,bid_size,ask_size';
+    if (upsertHistorical) return 'symbol,date';
+    if (upsertOptionChain) return 'symbol,expiry_date,strike,call_last,call_volume,put_last,put_volume';
+    if (upsertChart) return 'symbol,timestamp';
+    return null;
+  };
+  const conflictKey = getConflictKey();
+
+  // Universal optimized mechanism: 2,000-row batches across ALL tables.
+  // Screener keeps 2 concurrency (single call, big payload); others 5.
+  const batchSize = 2000;
+  const concurrency = table === 'nasdaq_stocks' ? 2 : 5;
   const total = rowsWithDate.length;
   let inserted = 0;
   let failed = 0;
 
-  if (isScreener) {
-    log(`Stock Screener: data-state dedupe upsert — ${total.toLocaleString()} rows fetched · load_timestamp: ${loadTimestamp}`, 'info');
+  if (useUpsert) {
+    log(`Data-state dedupe upsert — ${total.toLocaleString()} rows into ${table} · conflict: ${conflictKey}`, 'info');
   }
   log(`${useUpsert ? 'Upserting' : 'Inserting'} ${total.toLocaleString()} rows into ${table} (batch: ${batchSize}, concurrency: ${concurrency})...`);
 
@@ -2768,22 +2805,10 @@ async function insertToSupabase(table, rows) {
   const processBatch = async (batch, batchIndex) => {
     try {
       let error;
-      if (upsertScreener) {
-        // Screener: data-state dedupe — ON CONFLICT (symbol,last_sale,net_change,pct_change,market_cap) DO NOTHING.
-        // Keeps the FIRST-seen load_date/load_timestamp; only data CHANGES insert new rows.
-        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,last_sale,net_change,pct_change,market_cap', ignoreDuplicates: true }));
-      } else if (upsertHistorical) {
-        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,date', ignoreDuplicates: false }));
-      } else if (upsertOptionChain) {
-        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,expiry_date,strike,load_date', ignoreDuplicates: false }));
-      } else if (upsertChart) {
-        // Chart: timestamp is the unique key — only insert NEW minutes, skip existing
-        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,timestamp', ignoreDuplicates: true }));
-      } else if (upsertRealtimeTrades) {
-        // Realtime Trades: time_text + load_date is the unique key — only insert NEW trades, skip existing
-        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,time_text,load_date', ignoreDuplicates: true }));
-      } else if (useUpsert) {
-        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
+      if (conflictKey) {
+        // Factual data-state dedupe — ON CONFLICT (real value columns) DO NOTHING.
+        // Identical re-loads are skipped; any data CHANGE appends a new row.
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: conflictKey, ignoreDuplicates: true }));
       } else {
         ({ error } = await supabaseClient.from(table).insert(batch));
       }
@@ -2795,18 +2820,8 @@ async function insertToSupabase(table, rows) {
           for (const row of batch) {
             try {
               let rowError;
-              if (upsertScreener) {
-                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,last_sale,net_change,pct_change,market_cap', ignoreDuplicates: true }));
-              } else if (upsertHistorical) {
-                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,date', ignoreDuplicates: false }));
-              } else if (upsertOptionChain) {
-                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,expiry_date,strike,load_date', ignoreDuplicates: false }));
-              } else if (upsertChart) {
-                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,timestamp', ignoreDuplicates: true }));
-              } else if (upsertRealtimeTrades) {
-                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,time_text,load_date', ignoreDuplicates: true }));
-              } else if (useUpsert) {
-                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,load_date', ignoreDuplicates: false }));
+              if (conflictKey) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: conflictKey, ignoreDuplicates: true }));
               } else {
                 ({ error: rowError } = await supabaseClient.from(table).insert([row]));
               }
