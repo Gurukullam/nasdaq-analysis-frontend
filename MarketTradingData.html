@@ -2728,22 +2728,24 @@ async function insertToSupabase(table, rows) {
   // Mutate in-place to avoid creating millions of new objects (saves memory + GC pressure)
   rows.forEach(r => r.load_date = loadDate);
 
-  // Stock Screener: stamp the exact US NASDAQ wall-clock time so EVERY load
-  // becomes a NEW snapshot (append-only multi-load history — no overwrite).
+  // Stock Screener: stamp the exact US NASDAQ wall-clock time when each data
+  // state is FIRST observed. Dedupe is on (symbol,last_sale,net_change,
+  // pct_change,market_cap) — identical re-loads are skipped, changes append.
   const isScreener = table === 'nasdaq_stocks';
   const loadTimestamp = isScreener ? getUSLoadTimestamp() : null;
   if (loadTimestamp) rows.forEach(r => r.load_timestamp = loadTimestamp);
 
   const rowsWithDate = rows;
 
-  // Screener: the complete universe arrives in ONE fetch → single logical insert.
-  // Larger batches + lower concurrency land the full snapshot in ~2-3 requests.
+  // Screener: the full universe arrives in one fetch → single logical upsert.
+  // Larger batches + lower concurrency land the snapshot in ~2-3 requests.
   const upsertTables = ['nasdaq_quotes', 'nasdaq_summary', 'nasdaq_basic_quotes'];
+  const upsertScreener = table === 'nasdaq_stocks';
   const upsertHistorical = table === 'nasdaq_historical';
   const upsertOptionChain = table === 'nasdaq_option_chain';
   const upsertChart = table === 'nasdaq_chart';
   const upsertRealtimeTrades = table === 'nasdaq_realtime_trades';
-  const useUpsert = upsertTables.includes(table) || upsertHistorical || upsertOptionChain || upsertChart || upsertRealtimeTrades;
+  const useUpsert = upsertTables.includes(table) || upsertScreener || upsertHistorical || upsertOptionChain || upsertChart || upsertRealtimeTrades;
 
   const batchSize = isScreener ? 2000 : 500;
   const concurrency = isScreener ? 2 : 5;
@@ -2752,7 +2754,7 @@ async function insertToSupabase(table, rows) {
   let failed = 0;
 
   if (isScreener) {
-    log(`Stock Screener: single-logical insert of complete snapshot — ${total.toLocaleString()} rows · load_timestamp: ${loadTimestamp}`, 'info');
+    log(`Stock Screener: data-state dedupe upsert — ${total.toLocaleString()} rows fetched · load_timestamp: ${loadTimestamp}`, 'info');
   }
   log(`${useUpsert ? 'Upserting' : 'Inserting'} ${total.toLocaleString()} rows into ${table} (batch: ${batchSize}, concurrency: ${concurrency})...`);
 
@@ -2766,7 +2768,11 @@ async function insertToSupabase(table, rows) {
   const processBatch = async (batch, batchIndex) => {
     try {
       let error;
-      if (upsertHistorical) {
+      if (upsertScreener) {
+        // Screener: data-state dedupe — ON CONFLICT (symbol,last_sale,net_change,pct_change,market_cap) DO NOTHING.
+        // Keeps the FIRST-seen load_date/load_timestamp; only data CHANGES insert new rows.
+        ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,last_sale,net_change,pct_change,market_cap', ignoreDuplicates: true }));
+      } else if (upsertHistorical) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,date', ignoreDuplicates: false }));
       } else if (upsertOptionChain) {
         ({ error } = await supabaseClient.from(table).upsert(batch, { onConflict: 'symbol,expiry_date,strike,load_date', ignoreDuplicates: false }));
@@ -2789,7 +2795,9 @@ async function insertToSupabase(table, rows) {
           for (const row of batch) {
             try {
               let rowError;
-              if (upsertHistorical) {
+              if (upsertScreener) {
+                ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,last_sale,net_change,pct_change,market_cap', ignoreDuplicates: true }));
+              } else if (upsertHistorical) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,date', ignoreDuplicates: false }));
               } else if (upsertOptionChain) {
                 ({ error: rowError } = await supabaseClient.from(table).upsert([row], { onConflict: 'symbol,expiry_date,strike,load_date', ignoreDuplicates: false }));
