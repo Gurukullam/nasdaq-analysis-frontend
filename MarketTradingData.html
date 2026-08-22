@@ -796,6 +796,17 @@
     backdrop-filter: blur(4px);
   }
 
+  .gamma-status {
+    font-size: 0.78rem;
+    font-weight: 600;
+    margin-top: 10px;
+    min-height: 18px;
+    color: var(--text-muted);
+  }
+  .gamma-status.success { color: var(--success); }
+  .gamma-status.error { color: var(--error); }
+  .gamma-status.info { color: var(--text-muted); }
+
   @media (max-width: 768px) {
     .mobile-menu-toggle { display: block; }
     .nav-menu {
@@ -891,6 +902,19 @@
       </div>
     </div>
   </div>
+
+  <!-- GammaPace DB Reset Confirmation Modal -->
+  <div id="gammaResetModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-card); padding:28px; border-radius:var(--radius); max-width:380px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.2); border:1px solid var(--border);">
+      <h3 style="margin-bottom:16px; font-size:1.1rem; color:var(--error);">⚠️ Confirm DB Reset</h3>
+      <p id="gammaResetMessage" style="font-size:0.9rem; color:var(--text); line-height:1.5;"></p>
+      <p style="font-size:0.8rem; color:var(--text-muted);">This action cannot be undone.</p>
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:20px;">
+        <button class="btn btn-secondary btn-sm" onclick="closeGammaResetModal()">Cancel</button>
+        <button class="btn btn-danger btn-sm" onclick="confirmGammaReset()">OK — Proceed</button>
+      </div>
+    </div>
+  </div>
   <!-- Getting Started Instructions -->
   <div class="card" id="instructionsCard">
     <div class="card-header">
@@ -948,6 +972,7 @@
         <button class="btn btn-primary btn-sm" onclick="gammaIntradayEngine()">⚙️ Gamma_engine</button>
         <button class="btn btn-danger btn-sm" onclick="gammaIntradayReset()">🗑️ DB Reset</button>
       </div>
+      <div id="intradayStatus" class="gamma-status"></div>
     </div>
 
     <div class="card">
@@ -964,6 +989,7 @@
         <button class="btn btn-primary btn-sm" onclick="gammaLongTermEngine()">⚙️ Gamma_engine_hist</button>
         <button class="btn btn-danger btn-sm" onclick="gammaLongTermReset()">🗑️ DB Reset</button>
       </div>
+      <div id="longTermStatus" class="gamma-status"></div>
     </div>
   </div>
 
@@ -1846,11 +1872,11 @@ async function loadBasicQuotes() {
   let modeLabel = 'ALL NASDAQ';
   if (basicQuotesMode === 'gamma_intraday') {
     modeLabel = 'GammaPace IntraDay';
-    try { symbols = await getGammaPaceSymbols('GammaPace_Intraday'); }
+    try { symbols = await getGammaPaceSymbols('gammapace_intraday'); }
     catch (e) { log(`Current Quote (Basic): Failed to fetch GammaPace IntraDay symbols — ${e.message}`, 'error'); return []; }
   } else if (basicQuotesMode === 'gamma_longterm') {
     modeLabel = 'GammaPace LongTerm';
-    try { symbols = await getGammaPaceSymbols('GammaPace_LongTerm'); }
+    try { symbols = await getGammaPaceSymbols('gammapace_longterm'); }
     catch (e) { log(`Current Quote (Basic): Failed to fetch GammaPace LongTerm symbols — ${e.message}`, 'error'); return []; }
   } else {
     try { symbols = await getScreenerSymbols(); }
@@ -2029,11 +2055,11 @@ async function loadChart() {
   let modeLabel = 'ALL NASDAQ';
   if (chartMode === 'gamma_intraday') {
     modeLabel = 'GammaPace IntraDay';
-    try { symbols = await getGammaPaceSymbols('GammaPace_Intraday'); }
+    try { symbols = await getGammaPaceSymbols('gammapace_intraday'); }
     catch (e) { log(`Chart Data: Failed to fetch GammaPace IntraDay symbols — ${e.message}`, 'error'); return []; }
   } else if (chartMode === 'gamma_longterm') {
     modeLabel = 'GammaPace LongTerm';
-    try { symbols = await getGammaPaceSymbols('GammaPace_LongTerm'); }
+    try { symbols = await getGammaPaceSymbols('gammapace_longterm'); }
     catch (e) { log(`Chart Data: Failed to fetch GammaPace LongTerm symbols — ${e.message}`, 'error'); return []; }
   } else {
     try { symbols = await getScreenerSymbols(); }
@@ -2252,11 +2278,11 @@ async function loadRealtimeTrades() {
   let modeLabel = 'ALL NASDAQ';
   if (realtimeTradesMode === 'gamma_intraday') {
     modeLabel = 'GammaPace IntraDay';
-    try { symbols = await getGammaPaceSymbols('GammaPace_Intraday'); }
+    try { symbols = await getGammaPaceSymbols('gammapace_intraday'); }
     catch (e) { log(`Realtime Trades: Failed to fetch GammaPace IntraDay symbols — ${e.message}`, 'error'); return []; }
   } else if (realtimeTradesMode === 'gamma_longterm') {
     modeLabel = 'GammaPace LongTerm';
-    try { symbols = await getGammaPaceSymbols('GammaPace_LongTerm'); }
+    try { symbols = await getGammaPaceSymbols('gammapace_longterm'); }
     catch (e) { log(`Realtime Trades: Failed to fetch GammaPace LongTerm symbols — ${e.message}`, 'error'); return []; }
   } else {
     try { symbols = await getScreenerSymbols(); }
@@ -2518,11 +2544,11 @@ async function loadHistorical() {
   let modeLabel = 'ALL NASDAQ';
   if (historicalMode === 'gamma_intraday') {
     modeLabel = 'GammaPace IntraDay';
-    try { symbols = await getGammaPaceSymbols('GammaPace_Intraday'); }
+    try { symbols = await getGammaPaceSymbols('gammapace_intraday'); }
     catch (e) { log(`Historical Prices: Failed to fetch GammaPace IntraDay symbols — ${e.message}`, 'error'); return []; }
   } else if (historicalMode === 'gamma_longterm') {
     modeLabel = 'GammaPace LongTerm';
-    try { symbols = await getGammaPaceSymbols('GammaPace_LongTerm'); }
+    try { symbols = await getGammaPaceSymbols('gammapace_longterm'); }
     catch (e) { log(`Historical Prices: Failed to fetch GammaPace LongTerm symbols — ${e.message}`, 'error'); return []; }
   } else {
     try { symbols = await getScreenerSymbols(); }
@@ -2627,11 +2653,11 @@ async function loadSummary() {
   let modeLabel = 'ALL NASDAQ';
   if (summaryMode === 'gamma_intraday') {
     modeLabel = 'GammaPace IntraDay';
-    try { symbols = await getGammaPaceSymbols('GammaPace_Intraday'); }
+    try { symbols = await getGammaPaceSymbols('gammapace_intraday'); }
     catch (e) { log(`Quote Summary: Failed to fetch GammaPace IntraDay symbols — ${e.message}`, 'error'); return []; }
   } else if (summaryMode === 'gamma_longterm') {
     modeLabel = 'GammaPace LongTerm';
-    try { symbols = await getGammaPaceSymbols('GammaPace_LongTerm'); }
+    try { symbols = await getGammaPaceSymbols('gammapace_longterm'); }
     catch (e) { log(`Quote Summary: Failed to fetch GammaPace LongTerm symbols — ${e.message}`, 'error'); return []; }
   } else {
     try { symbols = await getScreenerSymbols(); }
@@ -2815,11 +2841,11 @@ async function loadOptionChain() {
   let modeLabel = 'ALL NASDAQ';
   if (optionChainMode === 'gamma_intraday') {
     modeLabel = 'GammaPace IntraDay';
-    try { symbols = await getGammaPaceSymbols('GammaPace_Intraday'); }
+    try { symbols = await getGammaPaceSymbols('gammapace_intraday'); }
     catch (e) { log(`Option Chain: Failed to fetch GammaPace IntraDay symbols — ${e.message}`, 'error'); return []; }
   } else if (optionChainMode === 'gamma_longterm') {
     modeLabel = 'GammaPace LongTerm';
-    try { symbols = await getGammaPaceSymbols('GammaPace_LongTerm'); }
+    try { symbols = await getGammaPaceSymbols('gammapace_longterm'); }
     catch (e) { log(`Option Chain: Failed to fetch GammaPace LongTerm symbols — ${e.message}`, 'error'); return []; }
   } else {
     try { symbols = await getScreenerSymbols(); }
@@ -3228,8 +3254,8 @@ async function downloadAPI(apiId) {
 // GammaPace Recommends — IntraDay & LongTerm
 // ============================================================
 // Admin-only sections. Tables (run supabase_gammapace.sql once):
-//   GammaPace_Intraday / GammaPace_Intraday_Hist
-//   GammaPace_LongTerm / GammaPace_LongTerm_Hist
+//   gammapace_intraday / gammapace_intraday_hist
+//   gammapace_longterm / gammapace_longterm_hist
 // Each active table: symbol (PK) + load_date_utc (UTC timestamp).
 // Engine SQLs are extension points — populate the arrays below
 // with the SQL/procedure names you provide later.
@@ -3260,28 +3286,67 @@ function gammaRequireSupabase() {
   return true;
 }
 
+// Inline status feedback under each section's buttons.
+// type: 'success' | 'error' | 'info'
+function setGammaStatus(elementId, msg, type = 'info') {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'gamma-status' + (type === 'success' ? ' success' : type === 'error' ? ' error' : ' info');
+}
+
+// ── DB Reset confirmation modal ─────────────────────────────
+let pendingGammaReset = null; // 'intraday' | 'longterm'
+
+function requestGammaReset(section) {
+  if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
+  pendingGammaReset = section;
+  const msgEl = document.getElementById('gammaResetMessage');
+  if (msgEl) {
+    msgEl.textContent = section === 'intraday'
+      ? 'This will move ALL tickers from gammapace_intraday into the archive history table (gammapace_intraday_hist), then DELETE every ticker from the active table.'
+      : 'This will move ALL tickers from gammapace_longterm into the archive history table (gammapace_longterm_hist), then DELETE every ticker from the active table.';
+  }
+  document.getElementById('gammaResetModal').style.display = 'flex';
+}
+
+function closeGammaResetModal() {
+  document.getElementById('gammaResetModal').style.display = 'none';
+  pendingGammaReset = null;
+}
+
+function confirmGammaReset() {
+  const section = pendingGammaReset;
+  pendingGammaReset = null;
+  document.getElementById('gammaResetModal').style.display = 'none';
+  if (section === 'intraday') executeIntradayReset();
+  else if (section === 'longterm') executeLongTermReset();
+}
+
 // ── IntraDay ────────────────────────────────────────────────
 
 async function gammaIntradayRefresh() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
   if (!gammaRequireSupabase()) return;
-  const { data, error } = await supabaseClient.from('GammaPace_Intraday').select('symbol').order('symbol');
-  if (error) { log(`GammaPace IntraDay Refresh error: ${error.message}`, 'error'); return; }
+  const { data, error } = await supabaseClient.from('gammapace_intraday').select('symbol').order('symbol');
+  if (error) { log(`GammaPace IntraDay Refresh error: ${error.message}`, 'error'); setGammaStatus('intradayStatus', `❌ Refresh failed: ${error.message}`, 'error'); return; }
   const symbols = (data || []).map(r => r.symbol);
   document.getElementById('intradaySymbols').value = symbols.join(', ');
   log(`GammaPace IntraDay: ${symbols.length} symbols loaded into text area`, 'success');
+  setGammaStatus('intradayStatus', `✅ Text space refreshed — ${symbols.length} symbol(s) pulled from gammapace_intraday`, 'success');
 }
 
 async function gammaIntradayLoad() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
   if (!gammaRequireSupabase()) return;
   const symbols = parseSymbolList(document.getElementById('intradaySymbols').value);
-  if (symbols.length === 0) { log('GammaPace IntraDay: No symbols to load.', 'warn'); return; }
+  if (symbols.length === 0) { log('GammaPace IntraDay: No symbols to load.', 'warn'); setGammaStatus('intradayStatus', '⚠️ No symbols to load — text area is empty', 'info'); return; }
   const now = getUTCTimestamp();
   const rows = symbols.map(symbol => ({ symbol, load_date_utc: now }));
-  const { error } = await supabaseClient.from('GammaPace_Intraday').upsert(rows, { onConflict: 'symbol' });
-  if (error) { log(`GammaPace IntraDay Load error: ${error.message}`, 'error'); return; }
+  const { error } = await supabaseClient.from('gammapace_intraday').upsert(rows, { onConflict: 'symbol' });
+  if (error) { log(`GammaPace IntraDay Load error: ${error.message}`, 'error'); setGammaStatus('intradayStatus', `❌ Load failed: ${error.message}`, 'error'); return; }
   log(`GammaPace IntraDay: ${symbols.length} symbols upserted (UTC ${now})`, 'success');
+  setGammaStatus('intradayStatus', `✅ Table updated — ${symbols.length} symbol(s) upserted to gammapace_intraday (UTC ${now})`, 'success');
 }
 
 async function gammaIntradayEngine() {
@@ -3289,35 +3354,45 @@ async function gammaIntradayEngine() {
   if (!gammaRequireSupabase()) return;
   if (INTRADAY_ENGINE_SQLS.length === 0) {
     log('GammaPace IntraDay: No engine SQLs configured yet. Add them to INTRADAY_ENGINE_SQLS.', 'warn');
+    setGammaStatus('intradayStatus', '⚠️ No engine SQLs configured yet (INTRADAY_ENGINE_SQLS is empty)', 'info');
     return;
   }
   log(`GammaPace IntraDay: Executing ${INTRADAY_ENGINE_SQLS.length} engine SQL(s)...`, 'info');
+  setGammaStatus('intradayStatus', `⚙️ Running ${INTRADAY_ENGINE_SQLS.length} engine SQL(s)...`, 'info');
+  let okCount = 0;
   for (const sql of INTRADAY_ENGINE_SQLS) {
     try {
       const { error } = await supabaseClient.rpc(sql);
       if (error) { log(`GammaPace IntraDay engine [${sql}]: ${error.message}`, 'error'); }
-      else { log(`GammaPace IntraDay engine [${sql}]: OK`, 'success'); }
+      else { okCount++; log(`GammaPace IntraDay engine [${sql}]: OK`, 'success'); }
     } catch (e) {
       log(`GammaPace IntraDay engine [${sql}]: ${e.message}`, 'error');
     }
   }
   log('GammaPace IntraDay: Engine run complete.', 'success');
+  setGammaStatus('intradayStatus', `✅ Gamma engine retrieved/executed — ${okCount}/${INTRADAY_ENGINE_SQLS.length} SQL(s) OK`, okCount === INTRADAY_ENGINE_SQLS.length ? 'success' : 'error');
 }
 
 async function gammaIntradayReset() {
+  requestGammaReset('intraday');
+}
+
+async function executeIntradayReset() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
   if (!gammaRequireSupabase()) return;
-  const { data, error } = await supabaseClient.from('GammaPace_Intraday').select('*');
-  if (error) { log(`GammaPace IntraDay Reset select error: ${error.message}`, 'error'); return; }
+  const { data, error } = await supabaseClient.from('gammapace_intraday').select('*');
+  if (error) { log(`GammaPace IntraDay Reset select error: ${error.message}`, 'error'); setGammaStatus('intradayStatus', `❌ Reset failed: ${error.message}`, 'error'); return; }
   if (data && data.length > 0) {
     const archiveRows = data.map(r => ({ symbol: r.symbol, load_date_utc: r.load_date_utc }));
-    const { error: insErr } = await supabaseClient.from('GammaPace_Intraday_Hist').insert(archiveRows);
-    if (insErr) { log(`GammaPace IntraDay Reset archive error: ${insErr.message}`, 'error'); return; }
-    const { error: delErr } = await supabaseClient.from('GammaPace_Intraday').delete().neq('symbol', '');
-    if (delErr) { log(`GammaPace IntraDay Reset delete error: ${delErr.message}`, 'error'); return; }
-    log(`GammaPace IntraDay: ${data.length} rows archived to GammaPace_Intraday_Hist and table truncated`, 'success');
+    const { error: insErr } = await supabaseClient.from('gammapace_intraday_hist').insert(archiveRows);
+    if (insErr) { log(`GammaPace IntraDay Reset archive error: ${insErr.message}`, 'error'); setGammaStatus('intradayStatus', `❌ Reset failed during archive: ${insErr.message}`, 'error'); return; }
+    const { error: delErr } = await supabaseClient.from('gammapace_intraday').delete().neq('symbol', '');
+    if (delErr) { log(`GammaPace IntraDay Reset delete error: ${delErr.message}`, 'error'); setGammaStatus('intradayStatus', `❌ Reset failed during delete: ${delErr.message}`, 'error'); return; }
+    log(`GammaPace IntraDay: ${data.length} rows archived to gammapace_intraday_hist and table truncated`, 'success');
+    setGammaStatus('intradayStatus', `✅ Table truncated/reset — ${data.length} ticker(s) archived to gammapace_intraday_hist`, 'success');
   } else {
     log('GammaPace IntraDay: Table already empty.', 'info');
+    setGammaStatus('intradayStatus', 'ℹ️ Table already empty — nothing to reset', 'info');
   }
 }
 
@@ -3326,23 +3401,25 @@ async function gammaIntradayReset() {
 async function gammaLongTermRefresh() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
   if (!gammaRequireSupabase()) return;
-  const { data, error } = await supabaseClient.from('GammaPace_LongTerm').select('symbol').order('symbol');
-  if (error) { log(`GammaPace LongTerm Refresh error: ${error.message}`, 'error'); return; }
+  const { data, error } = await supabaseClient.from('gammapace_longterm').select('symbol').order('symbol');
+  if (error) { log(`GammaPace LongTerm Refresh error: ${error.message}`, 'error'); setGammaStatus('longTermStatus', `❌ Refresh failed: ${error.message}`, 'error'); return; }
   const symbols = (data || []).map(r => r.symbol);
   document.getElementById('longTermSymbols').value = symbols.join(', ');
   log(`GammaPace LongTerm: ${symbols.length} symbols loaded into text area`, 'success');
+  setGammaStatus('longTermStatus', `✅ Text space refreshed — ${symbols.length} symbol(s) pulled from gammapace_longterm`, 'success');
 }
 
 async function gammaLongTermLoad() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
   if (!gammaRequireSupabase()) return;
   const symbols = parseSymbolList(document.getElementById('longTermSymbols').value);
-  if (symbols.length === 0) { log('GammaPace LongTerm: No symbols to load.', 'warn'); return; }
+  if (symbols.length === 0) { log('GammaPace LongTerm: No symbols to load.', 'warn'); setGammaStatus('longTermStatus', '⚠️ No symbols to load — text area is empty', 'info'); return; }
   const now = getUTCTimestamp();
   const rows = symbols.map(symbol => ({ symbol, load_date_utc: now }));
-  const { error } = await supabaseClient.from('GammaPace_LongTerm').upsert(rows, { onConflict: 'symbol' });
-  if (error) { log(`GammaPace LongTerm Load error: ${error.message}`, 'error'); return; }
+  const { error } = await supabaseClient.from('gammapace_longterm').upsert(rows, { onConflict: 'symbol' });
+  if (error) { log(`GammaPace LongTerm Load error: ${error.message}`, 'error'); setGammaStatus('longTermStatus', `❌ Load failed: ${error.message}`, 'error'); return; }
   log(`GammaPace LongTerm: ${symbols.length} symbols upserted (UTC ${now})`, 'success');
+  setGammaStatus('longTermStatus', `✅ Table updated — ${symbols.length} symbol(s) upserted to gammapace_longterm (UTC ${now})`, 'success');
 }
 
 async function gammaLongTermEngine() {
@@ -3350,35 +3427,45 @@ async function gammaLongTermEngine() {
   if (!gammaRequireSupabase()) return;
   if (LONGTERM_ENGINE_SQLS.length === 0) {
     log('GammaPace LongTerm: No engine SQLs configured yet. Add them to LONGTERM_ENGINE_SQLS.', 'warn');
+    setGammaStatus('longTermStatus', '⚠️ No engine SQLs configured yet (LONGTERM_ENGINE_SQLS is empty)', 'info');
     return;
   }
   log(`GammaPace LongTerm: Executing ${LONGTERM_ENGINE_SQLS.length} engine SQL(s)...`, 'info');
+  setGammaStatus('longTermStatus', `⚙️ Running ${LONGTERM_ENGINE_SQLS.length} engine SQL(s)...`, 'info');
+  let okCount = 0;
   for (const sql of LONGTERM_ENGINE_SQLS) {
     try {
       const { error } = await supabaseClient.rpc(sql);
       if (error) { log(`GammaPace LongTerm engine [${sql}]: ${error.message}`, 'error'); }
-      else { log(`GammaPace LongTerm engine [${sql}]: OK`, 'success'); }
+      else { okCount++; log(`GammaPace LongTerm engine [${sql}]: OK`, 'success'); }
     } catch (e) {
       log(`GammaPace LongTerm engine [${sql}]: ${e.message}`, 'error');
     }
   }
   log('GammaPace LongTerm: Engine run complete.', 'success');
+  setGammaStatus('longTermStatus', `✅ Gamma engine retrieved/executed — ${okCount}/${LONGTERM_ENGINE_SQLS.length} SQL(s) OK`, okCount === LONGTERM_ENGINE_SQLS.length ? 'success' : 'error');
 }
 
 async function gammaLongTermReset() {
+  requestGammaReset('longterm');
+}
+
+async function executeLongTermReset() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
   if (!gammaRequireSupabase()) return;
-  const { data, error } = await supabaseClient.from('GammaPace_LongTerm').select('*');
-  if (error) { log(`GammaPace LongTerm Reset select error: ${error.message}`, 'error'); return; }
+  const { data, error } = await supabaseClient.from('gammapace_longterm').select('*');
+  if (error) { log(`GammaPace LongTerm Reset select error: ${error.message}`, 'error'); setGammaStatus('longTermStatus', `❌ Reset failed: ${error.message}`, 'error'); return; }
   if (data && data.length > 0) {
     const archiveRows = data.map(r => ({ symbol: r.symbol, load_date_utc: r.load_date_utc }));
-    const { error: insErr } = await supabaseClient.from('GammaPace_LongTerm_Hist').insert(archiveRows);
-    if (insErr) { log(`GammaPace LongTerm Reset archive error: ${insErr.message}`, 'error'); return; }
-    const { error: delErr } = await supabaseClient.from('GammaPace_LongTerm').delete().neq('symbol', '');
-    if (delErr) { log(`GammaPace LongTerm Reset delete error: ${delErr.message}`, 'error'); return; }
-    log(`GammaPace LongTerm: ${data.length} rows archived to GammaPace_LongTerm_Hist and table truncated`, 'success');
+    const { error: insErr } = await supabaseClient.from('gammapace_longterm_hist').insert(archiveRows);
+    if (insErr) { log(`GammaPace LongTerm Reset archive error: ${insErr.message}`, 'error'); setGammaStatus('longTermStatus', `❌ Reset failed during archive: ${insErr.message}`, 'error'); return; }
+    const { error: delErr } = await supabaseClient.from('gammapace_longterm').delete().neq('symbol', '');
+    if (delErr) { log(`GammaPace LongTerm Reset delete error: ${delErr.message}`, 'error'); setGammaStatus('longTermStatus', `❌ Reset failed during delete: ${delErr.message}`, 'error'); return; }
+    log(`GammaPace LongTerm: ${data.length} rows archived to gammapace_longterm_hist and table truncated`, 'success');
+    setGammaStatus('longTermStatus', `✅ Table truncated/reset — ${data.length} ticker(s) archived to gammapace_longterm_hist`, 'success');
   } else {
     log('GammaPace LongTerm: Table already empty.', 'info');
+    setGammaStatus('longTermStatus', 'ℹ️ Table already empty — nothing to reset', 'info');
   }
 }
 
