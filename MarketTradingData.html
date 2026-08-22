@@ -377,7 +377,7 @@
     letter-spacing: 0.05em;
   }
 
-  .input-group input, .input-group select {
+  .input-group input, .input-group select, .input-group textarea {
     background: #fff;
     border: 2px solid #ddd;
     border-radius: 8px;
@@ -389,9 +389,16 @@
     font-family: inherit;
   }
 
-  .input-group input:focus, .input-group select:focus {
+  .input-group input:focus, .input-group select:focus, .input-group textarea:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+
+  .input-group textarea {
+    resize: vertical;
+    min-height: 120px;
+    line-height: 1.5;
+    text-transform: uppercase;
   }
 
   .api-list {
@@ -925,6 +932,41 @@
     </div>
   </div>
 
+  <!-- Admin-only GammaPace Recommends controls -->
+  <div id="gammaPacePanel" style="display:none;">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="icon">⚡</span> GammaPace IntraDay</div>
+      </div>
+      <div class="input-group">
+        <label>Ticker Symbols (comma-separated)</label>
+        <textarea id="intradaySymbols" rows="5" placeholder="AAPL, MSFT, NVDA, GOOGL, AMZN"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" onclick="gammaIntradayRefresh()">🔄 Refresh</button>
+        <button class="btn btn-primary btn-sm" onclick="gammaIntradayLoad()">💾 Load</button>
+        <button class="btn btn-primary btn-sm" onclick="gammaIntradayEngine()">⚙️ Gamma_engine</button>
+        <button class="btn btn-danger btn-sm" onclick="gammaIntradayReset()">🗑️ DB Reset</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="icon">📈</span> GammaPace LongTerm</div>
+      </div>
+      <div class="input-group">
+        <label>Ticker Symbols (comma-separated)</label>
+        <textarea id="longTermSymbols" rows="5" placeholder="AAPL, MSFT, NVDA, GOOGL, AMZN"></textarea>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" onclick="gammaLongTermRefresh()">🔄 Refresh</button>
+        <button class="btn btn-primary btn-sm" onclick="gammaLongTermLoad()">💾 Load</button>
+        <button class="btn btn-primary btn-sm" onclick="gammaLongTermEngine()">⚙️ Gamma_engine_hist</button>
+        <button class="btn btn-danger btn-sm" onclick="gammaLongTermReset()">🗑️ DB Reset</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Public Data Sources -->
   <div class="card">
     <div class="card-header">
@@ -1067,46 +1109,48 @@ function focusLog() {
   logContainer.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
+const MODE_LABELS = { all: 'ALL NASDAQ', single: 'Single Symbol', gamma_intraday: 'Gamma IntraDay', gamma_longterm: 'Gamma LongTerm' };
+
 function selectHistoricalMode(el) {
   historicalMode = el.dataset.mode;
   // Re-render to update chip styles and symbol input visibility
   discoverAPIs();
-  log(`Historical mode: ${historicalMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+  log(`Historical mode: ${MODE_LABELS[historicalMode] || historicalMode}`, 'info');
 }
 
 function selectSummaryMode(el) {
   summaryMode = el.dataset.mode;
   // Re-render to update chip styles and symbol input visibility
   discoverAPIs();
-  log(`Quote Summary mode: ${summaryMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+  log(`Quote Summary mode: ${MODE_LABELS[summaryMode] || summaryMode}`, 'info');
 }
 
 function selectOptionChainMode(el) {
   optionChainMode = el.dataset.mode;
   // Re-render to update chip styles and symbol input visibility
   discoverAPIs();
-  log(`Option Chain mode: ${optionChainMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+  log(`Option Chain mode: ${MODE_LABELS[optionChainMode] || optionChainMode}`, 'info');
 }
 
 function selectBasicQuotesMode(el) {
   basicQuotesMode = el.dataset.mode;
   // Re-render to update chip styles and symbol input visibility
   discoverAPIs();
-  log(`Current Quote (Basic) mode: ${basicQuotesMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+  log(`Current Quote (Basic) mode: ${MODE_LABELS[basicQuotesMode] || basicQuotesMode}`, 'info');
 }
 
 function selectChartMode(el) {
   chartMode = el.dataset.mode;
   // Re-render to update chip styles and symbol input visibility
   discoverAPIs();
-  log(`Chart Data mode: ${chartMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+  log(`Chart Data mode: ${MODE_LABELS[chartMode] || chartMode}`, 'info');
 }
 
 function selectRealtimeTradesMode(el) {
   realtimeTradesMode = el.dataset.mode;
   // Re-render to update chip styles and symbol input visibility
   discoverAPIs();
-  log(`Realtime Trades mode: ${realtimeTradesMode === 'all' ? 'ALL NASDAQ' : 'Single Symbol'}`, 'info');
+  log(`Realtime Trades mode: ${MODE_LABELS[realtimeTradesMode] || realtimeTradesMode}`, 'info');
 }
 
 function toggleAdminLock() {
@@ -1120,6 +1164,8 @@ function toggleAdminLock() {
     if (lockBtn) { lockBtn.textContent = '🔒'; lockBtn.title = 'Admin Lock'; }
     const adminPanel = document.getElementById('adminPanel');
     if (adminPanel) adminPanel.style.display = 'none';
+    const gammaPacePanel = document.getElementById('gammaPacePanel');
+    if (gammaPacePanel) gammaPacePanel.style.display = 'none';
     log('Admin lock engaged. Loop toggle disabled.', 'info');
   } else {
     document.getElementById('adminModal').style.display = 'flex';
@@ -1142,6 +1188,8 @@ function checkAdminPassword() {
     if (lockBtn) { lockBtn.textContent = '🔓'; lockBtn.title = 'Admin Unlock'; }
     const adminPanel = document.getElementById('adminPanel');
     if (adminPanel) adminPanel.style.display = 'block';
+    const gammaPacePanel = document.getElementById('gammaPacePanel');
+    if (gammaPacePanel) gammaPacePanel.style.display = 'block';
     closeAdminModal();
     log('Admin unlocked. Loop toggle is now enabled.', 'success');
   } else {
@@ -1200,6 +1248,8 @@ function discoverAPIs() {
         <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
           <span class="summary-mode-chip ${summaryMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectSummaryMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${summaryMode === 'all' ? '#d4af37' : '#fff'};color:${summaryMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
           <span class="summary-mode-chip ${summaryMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectSummaryMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${summaryMode === 'single' ? '#d4af37' : '#fff'};color:${summaryMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+          <span class="summary-mode-chip ${summaryMode === 'gamma_intraday' ? 'selected' : ''}" data-mode="gamma_intraday" onclick="selectSummaryMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${summaryMode === 'gamma_intraday' ? '#d4af37' : '#fff'};color:${summaryMode === 'gamma_intraday' ? '#fff' : '#8b4513'};">Gamma IntraDay</span>
+          <span class="summary-mode-chip ${summaryMode === 'gamma_longterm' ? 'selected' : ''}" data-mode="gamma_longterm" onclick="selectSummaryMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${summaryMode === 'gamma_longterm' ? '#d4af37' : '#fff'};color:${summaryMode === 'gamma_longterm' ? '#fff' : '#8b4513'};">Gamma LongTerm</span>
         </span>
       </span>
     ` : '';
@@ -1211,6 +1261,8 @@ function discoverAPIs() {
         <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
           <span class="option-chain-mode-chip ${optionChainMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectOptionChainMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${optionChainMode === 'all' ? '#d4af37' : '#fff'};color:${optionChainMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
           <span class="option-chain-mode-chip ${optionChainMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectOptionChainMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${optionChainMode === 'single' ? '#d4af37' : '#fff'};color:${optionChainMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+          <span class="option-chain-mode-chip ${optionChainMode === 'gamma_intraday' ? 'selected' : ''}" data-mode="gamma_intraday" onclick="selectOptionChainMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${optionChainMode === 'gamma_intraday' ? '#d4af37' : '#fff'};color:${optionChainMode === 'gamma_intraday' ? '#fff' : '#8b4513'};">Gamma IntraDay</span>
+          <span class="option-chain-mode-chip ${optionChainMode === 'gamma_longterm' ? 'selected' : ''}" data-mode="gamma_longterm" onclick="selectOptionChainMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${optionChainMode === 'gamma_longterm' ? '#d4af37' : '#fff'};color:${optionChainMode === 'gamma_longterm' ? '#fff' : '#8b4513'};">Gamma LongTerm</span>
         </span>
       </span>
     ` : '';
@@ -1222,6 +1274,8 @@ function discoverAPIs() {
         <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
           <span class="chart-mode-chip ${chartMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectChartMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${chartMode === 'all' ? '#d4af37' : '#fff'};color:${chartMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
           <span class="chart-mode-chip ${chartMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectChartMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${chartMode === 'single' ? '#d4af37' : '#fff'};color:${chartMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+          <span class="chart-mode-chip ${chartMode === 'gamma_intraday' ? 'selected' : ''}" data-mode="gamma_intraday" onclick="selectChartMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${chartMode === 'gamma_intraday' ? '#d4af37' : '#fff'};color:${chartMode === 'gamma_intraday' ? '#fff' : '#8b4513'};">Gamma IntraDay</span>
+          <span class="chart-mode-chip ${chartMode === 'gamma_longterm' ? 'selected' : ''}" data-mode="gamma_longterm" onclick="selectChartMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${chartMode === 'gamma_longterm' ? '#d4af37' : '#fff'};color:${chartMode === 'gamma_longterm' ? '#fff' : '#8b4513'};">Gamma LongTerm</span>
         </span>
       </span>
     ` : '';
@@ -1233,6 +1287,8 @@ function discoverAPIs() {
         <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
           <span class="realtime-trades-mode-chip ${realtimeTradesMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectRealtimeTradesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${realtimeTradesMode === 'all' ? '#d4af37' : '#fff'};color:${realtimeTradesMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
           <span class="realtime-trades-mode-chip ${realtimeTradesMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectRealtimeTradesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${realtimeTradesMode === 'single' ? '#d4af37' : '#fff'};color:${realtimeTradesMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+          <span class="realtime-trades-mode-chip ${realtimeTradesMode === 'gamma_intraday' ? 'selected' : ''}" data-mode="gamma_intraday" onclick="selectRealtimeTradesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${realtimeTradesMode === 'gamma_intraday' ? '#d4af37' : '#fff'};color:${realtimeTradesMode === 'gamma_intraday' ? '#fff' : '#8b4513'};">Gamma IntraDay</span>
+          <span class="realtime-trades-mode-chip ${realtimeTradesMode === 'gamma_longterm' ? 'selected' : ''}" data-mode="gamma_longterm" onclick="selectRealtimeTradesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${realtimeTradesMode === 'gamma_longterm' ? '#d4af37' : '#fff'};color:${realtimeTradesMode === 'gamma_longterm' ? '#fff' : '#8b4513'};">Gamma LongTerm</span>
         </span>
       </span>
     ` : '';
@@ -1244,6 +1300,8 @@ function discoverAPIs() {
         <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
           <span class="basic-quotes-mode-chip ${basicQuotesMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectBasicQuotesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${basicQuotesMode === 'all' ? '#d4af37' : '#fff'};color:${basicQuotesMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
           <span class="basic-quotes-mode-chip ${basicQuotesMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectBasicQuotesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${basicQuotesMode === 'single' ? '#d4af37' : '#fff'};color:${basicQuotesMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+          <span class="basic-quotes-mode-chip ${basicQuotesMode === 'gamma_intraday' ? 'selected' : ''}" data-mode="gamma_intraday" onclick="selectBasicQuotesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${basicQuotesMode === 'gamma_intraday' ? '#d4af37' : '#fff'};color:${basicQuotesMode === 'gamma_intraday' ? '#fff' : '#8b4513'};">Gamma IntraDay</span>
+          <span class="basic-quotes-mode-chip ${basicQuotesMode === 'gamma_longterm' ? 'selected' : ''}" data-mode="gamma_longterm" onclick="selectBasicQuotesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${basicQuotesMode === 'gamma_longterm' ? '#d4af37' : '#fff'};color:${basicQuotesMode === 'gamma_longterm' ? '#fff' : '#8b4513'};">Gamma LongTerm</span>
         </span>
       </span>
     ` : '';
@@ -1260,6 +1318,8 @@ function discoverAPIs() {
         <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
           <span class="hist-mode-chip ${historicalMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectHistoricalMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${historicalMode === 'all' ? '#d4af37' : '#fff'};color:${historicalMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
           <span class="hist-mode-chip ${historicalMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectHistoricalMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${historicalMode === 'single' ? '#d4af37' : '#fff'};color:${historicalMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+          <span class="hist-mode-chip ${historicalMode === 'gamma_intraday' ? 'selected' : ''}" data-mode="gamma_intraday" onclick="selectHistoricalMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${historicalMode === 'gamma_intraday' ? '#d4af37' : '#fff'};color:${historicalMode === 'gamma_intraday' ? '#fff' : '#8b4513'};">Gamma IntraDay</span>
+          <span class="hist-mode-chip ${historicalMode === 'gamma_longterm' ? 'selected' : ''}" data-mode="gamma_longterm" onclick="selectHistoricalMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${historicalMode === 'gamma_longterm' ? '#d4af37' : '#fff'};color:${historicalMode === 'gamma_longterm' ? '#fff' : '#8b4513'};">Gamma LongTerm</span>
         </span>
         <input type="text" id="hist-symbol" placeholder="SYMBOL" value="AAPL"
           style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${historicalMode === 'single' ? 'inline-block' : 'none'};"
@@ -1346,6 +1406,24 @@ async function getScreenerSymbols() {
   screenerSymbolsCache = rows.map(r => r.symbol).filter(s => s);
   log(`${screenerSymbolsCache.length} NASDAQ symbols cached for session`, 'success');
   return screenerSymbolsCache;
+}
+
+// GammaPace watchlist symbol source — reads the public GammaPace_* tables.
+// Used by the "Gamma IntraDay" / "Gamma LongTerm" mode chips on per-symbol endpoints.
+async function getGammaPaceSymbols(table) {
+  if (!supabaseClient) {
+    log('Supabase not initialized. Configure Bridge and Security Key in Settings.', 'error');
+    document.getElementById('settingsPanel').classList.add('active');
+    return [];
+  }
+  const { data, error } = await supabaseClient.from(table).select('symbol').order('symbol');
+  if (error) {
+    log(`Failed to fetch symbols from ${table}: ${error.message}`, 'error');
+    return [];
+  }
+  const symbols = (data || []).map(r => r.symbol).filter(s => s);
+  log(`${symbols.length} symbols loaded from ${table}`, 'success');
+  return symbols;
 }
 
 // Generic parallel fetch worker for ALL-mode endpoints
@@ -1763,21 +1841,28 @@ async function loadBasicQuotes() {
     }
   }
 
-  // ── ALL NASDAQ MODE ──
+  // ── BULK MODES: ALL NASDAQ / Gamma IntraDay / Gamma LongTerm ──
   let symbols = [];
-  try {
-    symbols = await getScreenerSymbols();
-  } catch (e) {
-    log(`Current Quote (Basic): Failed to fetch symbol list — ${e.message}`, 'error');
-    return [];
+  let modeLabel = 'ALL NASDAQ';
+  if (basicQuotesMode === 'gamma_intraday') {
+    modeLabel = 'GammaPace IntraDay';
+    try { symbols = await getGammaPaceSymbols('GammaPace_Intraday'); }
+    catch (e) { log(`Current Quote (Basic): Failed to fetch GammaPace IntraDay symbols — ${e.message}`, 'error'); return []; }
+  } else if (basicQuotesMode === 'gamma_longterm') {
+    modeLabel = 'GammaPace LongTerm';
+    try { symbols = await getGammaPaceSymbols('GammaPace_LongTerm'); }
+    catch (e) { log(`Current Quote (Basic): Failed to fetch GammaPace LongTerm symbols — ${e.message}`, 'error'); return []; }
+  } else {
+    try { symbols = await getScreenerSymbols(); }
+    catch (e) { log(`Current Quote (Basic): Failed to fetch symbol list — ${e.message}`, 'error'); return []; }
   }
 
   if (symbols.length === 0) {
-    log('Current Quote (Basic): No symbols found', 'warn');
+    log(`Current Quote (Basic): No symbols found for ${modeLabel}`, 'warn');
     return [];
   }
 
-  log(`Starting: Current Quote (Basic) for ALL ${symbols.length} NASDAQ symbols · 10 concurrent · 25ms gap (supersonic)`);
+  log(`Starting: Current Quote (Basic) for ${symbols.length} ${modeLabel} symbols · 10 concurrent · 25ms gap (supersonic)`);
 
   const allRows = [];
 
@@ -1939,21 +2024,28 @@ async function loadChart() {
     }
   }
 
-  // ── ALL NASDAQ MODE ──
+  // ── BULK MODES: ALL NASDAQ / Gamma IntraDay / Gamma LongTerm ──
   let symbols = [];
-  try {
-    symbols = await getScreenerSymbols();
-  } catch (e) {
-    log(`Chart Data: Failed to fetch symbol list — ${e.message}`, 'error');
-    return [];
+  let modeLabel = 'ALL NASDAQ';
+  if (chartMode === 'gamma_intraday') {
+    modeLabel = 'GammaPace IntraDay';
+    try { symbols = await getGammaPaceSymbols('GammaPace_Intraday'); }
+    catch (e) { log(`Chart Data: Failed to fetch GammaPace IntraDay symbols — ${e.message}`, 'error'); return []; }
+  } else if (chartMode === 'gamma_longterm') {
+    modeLabel = 'GammaPace LongTerm';
+    try { symbols = await getGammaPaceSymbols('GammaPace_LongTerm'); }
+    catch (e) { log(`Chart Data: Failed to fetch GammaPace LongTerm symbols — ${e.message}`, 'error'); return []; }
+  } else {
+    try { symbols = await getScreenerSymbols(); }
+    catch (e) { log(`Chart Data: Failed to fetch symbol list — ${e.message}`, 'error'); return []; }
   }
 
   if (symbols.length === 0) {
-    log('Chart Data: No symbols found', 'warn');
+    log(`Chart Data: No symbols found for ${modeLabel}`, 'warn');
     return [];
   }
 
-  log(`Starting: Chart Data for ALL ${symbols.length} NASDAQ symbols · 10 concurrent · 25ms gap · 10s timeout (supersonic)`);
+  log(`Starting: Chart Data for ${symbols.length} ${modeLabel} symbols · 10 concurrent · 25ms gap · 10s timeout (supersonic)`);
 
   const allRows = [];
 
@@ -2155,21 +2247,28 @@ async function loadRealtimeTrades() {
     }
   }
 
-  // ── ALL NASDAQ MODE ──
+  // ── BULK MODES: ALL NASDAQ / Gamma IntraDay / Gamma LongTerm ──
   let symbols = [];
-  try {
-    symbols = await getScreenerSymbols();
-  } catch (e) {
-    log(`Realtime Trades: Failed to fetch symbol list — ${e.message}`, 'error');
-    return [];
+  let modeLabel = 'ALL NASDAQ';
+  if (realtimeTradesMode === 'gamma_intraday') {
+    modeLabel = 'GammaPace IntraDay';
+    try { symbols = await getGammaPaceSymbols('GammaPace_Intraday'); }
+    catch (e) { log(`Realtime Trades: Failed to fetch GammaPace IntraDay symbols — ${e.message}`, 'error'); return []; }
+  } else if (realtimeTradesMode === 'gamma_longterm') {
+    modeLabel = 'GammaPace LongTerm';
+    try { symbols = await getGammaPaceSymbols('GammaPace_LongTerm'); }
+    catch (e) { log(`Realtime Trades: Failed to fetch GammaPace LongTerm symbols — ${e.message}`, 'error'); return []; }
+  } else {
+    try { symbols = await getScreenerSymbols(); }
+    catch (e) { log(`Realtime Trades: Failed to fetch symbol list — ${e.message}`, 'error'); return []; }
   }
 
   if (symbols.length === 0) {
-    log('Realtime Trades: No symbols found', 'warn');
+    log(`Realtime Trades: No symbols found for ${modeLabel}`, 'warn');
     return [];
   }
 
-  log(`Starting: Realtime Trades for ALL ${symbols.length} NASDAQ symbols · 10 concurrent · 25ms gap (supersonic)`);
+  log(`Starting: Realtime Trades for ${symbols.length} ${modeLabel} symbols · 10 concurrent · 25ms gap (supersonic)`);
 
   const allRows = [];
 
@@ -2414,21 +2513,28 @@ async function loadHistorical() {
     }
   }
 
-  // ── ALL NASDAQ MODE ──
+  // ── BULK MODES: ALL NASDAQ / Gamma IntraDay / Gamma LongTerm ──
   let symbols = [];
-  try {
-    symbols = await getScreenerSymbols();
-  } catch (e) {
-    log(`Historical Prices: Failed to fetch symbol list — ${e.message}`, 'error');
-    return [];
+  let modeLabel = 'ALL NASDAQ';
+  if (historicalMode === 'gamma_intraday') {
+    modeLabel = 'GammaPace IntraDay';
+    try { symbols = await getGammaPaceSymbols('GammaPace_Intraday'); }
+    catch (e) { log(`Historical Prices: Failed to fetch GammaPace IntraDay symbols — ${e.message}`, 'error'); return []; }
+  } else if (historicalMode === 'gamma_longterm') {
+    modeLabel = 'GammaPace LongTerm';
+    try { symbols = await getGammaPaceSymbols('GammaPace_LongTerm'); }
+    catch (e) { log(`Historical Prices: Failed to fetch GammaPace LongTerm symbols — ${e.message}`, 'error'); return []; }
+  } else {
+    try { symbols = await getScreenerSymbols(); }
+    catch (e) { log(`Historical Prices: Failed to fetch symbol list — ${e.message}`, 'error'); return []; }
   }
 
   if (symbols.length === 0) {
-    log('Historical Prices: No symbols found', 'warn');
+    log(`Historical Prices: No symbols found for ${modeLabel}`, 'warn');
     return [];
   }
 
-  log(`Starting: Historical Prices for ALL ${symbols.length} NASDAQ symbols (${fromDate} to ${toDate}) · 8 concurrent · 40ms gap`);
+  log(`Starting: Historical Prices for ${symbols.length} ${modeLabel} symbols (${fromDate} to ${toDate}) · 8 concurrent · 40ms gap`);
 
   const allRows = [];
 
@@ -2516,21 +2622,28 @@ async function loadSummary() {
     }
   }
 
-  // ── ALL NASDAQ MODE ──
+  // ── BULK MODES: ALL NASDAQ / Gamma IntraDay / Gamma LongTerm ──
   let symbols = [];
-  try {
-    symbols = await getScreenerSymbols();
-  } catch (e) {
-    log(`Quote Summary: Failed to fetch symbol list — ${e.message}`, 'error');
-    return [];
+  let modeLabel = 'ALL NASDAQ';
+  if (summaryMode === 'gamma_intraday') {
+    modeLabel = 'GammaPace IntraDay';
+    try { symbols = await getGammaPaceSymbols('GammaPace_Intraday'); }
+    catch (e) { log(`Quote Summary: Failed to fetch GammaPace IntraDay symbols — ${e.message}`, 'error'); return []; }
+  } else if (summaryMode === 'gamma_longterm') {
+    modeLabel = 'GammaPace LongTerm';
+    try { symbols = await getGammaPaceSymbols('GammaPace_LongTerm'); }
+    catch (e) { log(`Quote Summary: Failed to fetch GammaPace LongTerm symbols — ${e.message}`, 'error'); return []; }
+  } else {
+    try { symbols = await getScreenerSymbols(); }
+    catch (e) { log(`Quote Summary: Failed to fetch symbol list — ${e.message}`, 'error'); return []; }
   }
 
   if (symbols.length === 0) {
-    log('Quote Summary: No symbols found', 'warn');
+    log(`Quote Summary: No symbols found for ${modeLabel}`, 'warn');
     return [];
   }
 
-  log(`Starting: Quote Summary for ALL ${symbols.length} NASDAQ symbols · 8 concurrent · 40ms gap`);
+  log(`Starting: Quote Summary for ${symbols.length} ${modeLabel} symbols · 8 concurrent · 40ms gap`);
 
   const allRows = [];
 
@@ -2697,21 +2810,28 @@ async function loadOptionChain() {
     }
   }
 
-  // ── ALL NASDAQ MODE ──
+  // ── BULK MODES: ALL NASDAQ / Gamma IntraDay / Gamma LongTerm ──
   let symbols = [];
-  try {
-    symbols = await getScreenerSymbols();
-  } catch (e) {
-    log(`Option Chain: Failed to fetch symbol list — ${e.message}`, 'error');
-    return [];
+  let modeLabel = 'ALL NASDAQ';
+  if (optionChainMode === 'gamma_intraday') {
+    modeLabel = 'GammaPace IntraDay';
+    try { symbols = await getGammaPaceSymbols('GammaPace_Intraday'); }
+    catch (e) { log(`Option Chain: Failed to fetch GammaPace IntraDay symbols — ${e.message}`, 'error'); return []; }
+  } else if (optionChainMode === 'gamma_longterm') {
+    modeLabel = 'GammaPace LongTerm';
+    try { symbols = await getGammaPaceSymbols('GammaPace_LongTerm'); }
+    catch (e) { log(`Option Chain: Failed to fetch GammaPace LongTerm symbols — ${e.message}`, 'error'); return []; }
+  } else {
+    try { symbols = await getScreenerSymbols(); }
+    catch (e) { log(`Option Chain: Failed to fetch symbol list — ${e.message}`, 'error'); return []; }
   }
 
   if (symbols.length === 0) {
-    log('Option Chain: No symbols found', 'warn');
+    log(`Option Chain: No symbols found for ${modeLabel}`, 'warn');
     return [];
   }
 
-  log(`Starting: Option Chain for ALL ${symbols.length} NASDAQ symbols · 6 concurrent · 50ms gap`);
+  log(`Starting: Option Chain for ${symbols.length} ${modeLabel} symbols · 6 concurrent · 50ms gap`);
 
   const allRows = [];
 
@@ -3102,6 +3222,164 @@ async function downloadAPI(apiId) {
 
   document.getElementById('logContainer').classList.remove('active-log');
   isLoading = false;
+}
+
+// ============================================================
+// GammaPace Recommends — IntraDay & LongTerm
+// ============================================================
+// Admin-only sections. Tables (run supabase_gammapace.sql once):
+//   GammaPace_Intraday / GammaPace_Intraday_Hist
+//   GammaPace_LongTerm / GammaPace_LongTerm_Hist
+// Each active table: symbol (PK) + load_date_utc (UTC timestamp).
+// Engine SQLs are extension points — populate the arrays below
+// with the SQL/procedure names you provide later.
+// ============================================================
+
+// Extension points — fill with the IntraDay SQLs you provide later.
+const INTRADAY_ENGINE_SQLS = [];
+// Extension points — fill with the LongTerm SQLs/procedures/triggers you provide later.
+const LONGTERM_ENGINE_SQLS = [];
+
+function getUTCTimestamp() {
+  return new Date().toISOString(); // e.g. "2026-08-22T08:17:50.123Z"
+}
+
+function parseSymbolList(text) {
+  return (text || '')
+    .split(',')
+    .map(s => s.trim().toUpperCase())
+    .filter(s => s.length > 0);
+}
+
+function gammaRequireSupabase() {
+  if (!supabaseClient) {
+    log('Supabase not initialized. Configure Bridge and Security Key in Settings.', 'error');
+    document.getElementById('settingsPanel').classList.add('active');
+    return false;
+  }
+  return true;
+}
+
+// ── IntraDay ────────────────────────────────────────────────
+
+async function gammaIntradayRefresh() {
+  if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
+  if (!gammaRequireSupabase()) return;
+  const { data, error } = await supabaseClient.from('GammaPace_Intraday').select('symbol').order('symbol');
+  if (error) { log(`GammaPace IntraDay Refresh error: ${error.message}`, 'error'); return; }
+  const symbols = (data || []).map(r => r.symbol);
+  document.getElementById('intradaySymbols').value = symbols.join(', ');
+  log(`GammaPace IntraDay: ${symbols.length} symbols loaded into text area`, 'success');
+}
+
+async function gammaIntradayLoad() {
+  if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
+  if (!gammaRequireSupabase()) return;
+  const symbols = parseSymbolList(document.getElementById('intradaySymbols').value);
+  if (symbols.length === 0) { log('GammaPace IntraDay: No symbols to load.', 'warn'); return; }
+  const now = getUTCTimestamp();
+  const rows = symbols.map(symbol => ({ symbol, load_date_utc: now }));
+  const { error } = await supabaseClient.from('GammaPace_Intraday').upsert(rows, { onConflict: 'symbol' });
+  if (error) { log(`GammaPace IntraDay Load error: ${error.message}`, 'error'); return; }
+  log(`GammaPace IntraDay: ${symbols.length} symbols upserted (UTC ${now})`, 'success');
+}
+
+async function gammaIntradayEngine() {
+  if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
+  if (!gammaRequireSupabase()) return;
+  if (INTRADAY_ENGINE_SQLS.length === 0) {
+    log('GammaPace IntraDay: No engine SQLs configured yet. Add them to INTRADAY_ENGINE_SQLS.', 'warn');
+    return;
+  }
+  log(`GammaPace IntraDay: Executing ${INTRADAY_ENGINE_SQLS.length} engine SQL(s)...`, 'info');
+  for (const sql of INTRADAY_ENGINE_SQLS) {
+    try {
+      const { error } = await supabaseClient.rpc(sql);
+      if (error) { log(`GammaPace IntraDay engine [${sql}]: ${error.message}`, 'error'); }
+      else { log(`GammaPace IntraDay engine [${sql}]: OK`, 'success'); }
+    } catch (e) {
+      log(`GammaPace IntraDay engine [${sql}]: ${e.message}`, 'error');
+    }
+  }
+  log('GammaPace IntraDay: Engine run complete.', 'success');
+}
+
+async function gammaIntradayReset() {
+  if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
+  if (!gammaRequireSupabase()) return;
+  const { data, error } = await supabaseClient.from('GammaPace_Intraday').select('*');
+  if (error) { log(`GammaPace IntraDay Reset select error: ${error.message}`, 'error'); return; }
+  if (data && data.length > 0) {
+    const archiveRows = data.map(r => ({ symbol: r.symbol, load_date_utc: r.load_date_utc }));
+    const { error: insErr } = await supabaseClient.from('GammaPace_Intraday_Hist').insert(archiveRows);
+    if (insErr) { log(`GammaPace IntraDay Reset archive error: ${insErr.message}`, 'error'); return; }
+    const { error: delErr } = await supabaseClient.from('GammaPace_Intraday').delete().neq('symbol', '');
+    if (delErr) { log(`GammaPace IntraDay Reset delete error: ${delErr.message}`, 'error'); return; }
+    log(`GammaPace IntraDay: ${data.length} rows archived to GammaPace_Intraday_Hist and table truncated`, 'success');
+  } else {
+    log('GammaPace IntraDay: Table already empty.', 'info');
+  }
+}
+
+// ── LongTerm ────────────────────────────────────────────────
+
+async function gammaLongTermRefresh() {
+  if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
+  if (!gammaRequireSupabase()) return;
+  const { data, error } = await supabaseClient.from('GammaPace_LongTerm').select('symbol').order('symbol');
+  if (error) { log(`GammaPace LongTerm Refresh error: ${error.message}`, 'error'); return; }
+  const symbols = (data || []).map(r => r.symbol);
+  document.getElementById('longTermSymbols').value = symbols.join(', ');
+  log(`GammaPace LongTerm: ${symbols.length} symbols loaded into text area`, 'success');
+}
+
+async function gammaLongTermLoad() {
+  if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
+  if (!gammaRequireSupabase()) return;
+  const symbols = parseSymbolList(document.getElementById('longTermSymbols').value);
+  if (symbols.length === 0) { log('GammaPace LongTerm: No symbols to load.', 'warn'); return; }
+  const now = getUTCTimestamp();
+  const rows = symbols.map(symbol => ({ symbol, load_date_utc: now }));
+  const { error } = await supabaseClient.from('GammaPace_LongTerm').upsert(rows, { onConflict: 'symbol' });
+  if (error) { log(`GammaPace LongTerm Load error: ${error.message}`, 'error'); return; }
+  log(`GammaPace LongTerm: ${symbols.length} symbols upserted (UTC ${now})`, 'success');
+}
+
+async function gammaLongTermEngine() {
+  if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
+  if (!gammaRequireSupabase()) return;
+  if (LONGTERM_ENGINE_SQLS.length === 0) {
+    log('GammaPace LongTerm: No engine SQLs configured yet. Add them to LONGTERM_ENGINE_SQLS.', 'warn');
+    return;
+  }
+  log(`GammaPace LongTerm: Executing ${LONGTERM_ENGINE_SQLS.length} engine SQL(s)...`, 'info');
+  for (const sql of LONGTERM_ENGINE_SQLS) {
+    try {
+      const { error } = await supabaseClient.rpc(sql);
+      if (error) { log(`GammaPace LongTerm engine [${sql}]: ${error.message}`, 'error'); }
+      else { log(`GammaPace LongTerm engine [${sql}]: OK`, 'success'); }
+    } catch (e) {
+      log(`GammaPace LongTerm engine [${sql}]: ${e.message}`, 'error');
+    }
+  }
+  log('GammaPace LongTerm: Engine run complete.', 'success');
+}
+
+async function gammaLongTermReset() {
+  if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); return; }
+  if (!gammaRequireSupabase()) return;
+  const { data, error } = await supabaseClient.from('GammaPace_LongTerm').select('*');
+  if (error) { log(`GammaPace LongTerm Reset select error: ${error.message}`, 'error'); return; }
+  if (data && data.length > 0) {
+    const archiveRows = data.map(r => ({ symbol: r.symbol, load_date_utc: r.load_date_utc }));
+    const { error: insErr } = await supabaseClient.from('GammaPace_LongTerm_Hist').insert(archiveRows);
+    if (insErr) { log(`GammaPace LongTerm Reset archive error: ${insErr.message}`, 'error'); return; }
+    const { error: delErr } = await supabaseClient.from('GammaPace_LongTerm').delete().neq('symbol', '');
+    if (delErr) { log(`GammaPace LongTerm Reset delete error: ${delErr.message}`, 'error'); return; }
+    log(`GammaPace LongTerm: ${data.length} rows archived to GammaPace_LongTerm_Hist and table truncated`, 'success');
+  } else {
+    log('GammaPace LongTerm: Table already empty.', 'info');
+  }
 }
 
 // ============================================================
