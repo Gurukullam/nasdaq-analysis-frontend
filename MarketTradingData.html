@@ -967,8 +967,8 @@
         <textarea id="intradaySymbols" rows="5" placeholder="AAPL, MSFT, NVDA, GOOGL, AMZN"></textarea>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-secondary btn-sm" onclick="gammaIntradayRefresh()">🔄 Refresh</button>
-        <button class="btn btn-primary btn-sm" onclick="gammaIntradayLoad()">💾 Load</button>
+        <button class="btn btn-secondary btn-sm" onclick="gammaIntradayRefresh()">🔄 Active</button>
+        <button class="btn btn-primary btn-sm" onclick="gammaIntradayLoad()">💾 Add</button>
         <button class="btn btn-primary btn-sm" onclick="gammaIntradayEngine()">⚙️ Gamma_engine</button>
         <button class="btn btn-danger btn-sm" onclick="gammaIntradayReset()">🗑️ DB Reset</button>
       </div>
@@ -984,8 +984,8 @@
         <textarea id="longTermSymbols" rows="5" placeholder="AAPL, MSFT, NVDA, GOOGL, AMZN"></textarea>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-secondary btn-sm" onclick="gammaLongTermRefresh()">🔄 Refresh</button>
-        <button class="btn btn-primary btn-sm" onclick="gammaLongTermLoad()">💾 Load</button>
+        <button class="btn btn-secondary btn-sm" onclick="gammaLongTermRefresh()">🔄 Active</button>
+        <button class="btn btn-primary btn-sm" onclick="gammaLongTermLoad()">💾 Add</button>
         <button class="btn btn-primary btn-sm" onclick="gammaLongTermEngine()">⚙️ Gamma_engine_hist</button>
         <button class="btn btn-danger btn-sm" onclick="gammaLongTermReset()">🗑️ DB Reset</button>
       </div>
@@ -3349,7 +3349,6 @@ function confirmGammaReset() {
 async function gammaIntradayRefresh() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); setGammaStatus('intradayStatus', '🔒 Admin locked — click the 🔒 icon in Settings and enter the password', 'error'); return; }
   if (!gammaRequireSupabase()) { setGammaStatus('intradayStatus', '❌ Supabase not connected — configure Bridge and Security Key in Settings', 'error'); return; }
-  focusLog();
   const { data, error } = await supabaseClient.from('gammapace_intraday').select('symbol').order('symbol');
   if (error) { log(`GammaPace IntraDay Refresh error: ${error.message}`, 'error'); setGammaStatus('intradayStatus', `❌ Refresh failed: ${error.message}${gammaErrorHint(error.message)}`, 'error'); return; }
   const symbols = (data || []).map(r => r.symbol);
@@ -3361,7 +3360,6 @@ async function gammaIntradayRefresh() {
 async function gammaIntradayLoad() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); setGammaStatus('intradayStatus', '🔒 Admin locked — click the 🔒 icon in Settings and enter the password', 'error'); return; }
   if (!gammaRequireSupabase()) { setGammaStatus('intradayStatus', '❌ Supabase not connected — configure Bridge and Security Key in Settings', 'error'); return; }
-  focusLog();
   const symbols = parseSymbolList(document.getElementById('intradaySymbols').value);
   if (symbols.length === 0) { log('GammaPace IntraDay: No symbols to load.', 'warn'); setGammaStatus('intradayStatus', '⚠️ No symbols to load — text area is empty', 'info'); return; }
   const now = getUTCTimestamp();
@@ -3375,7 +3373,6 @@ async function gammaIntradayLoad() {
 async function gammaIntradayEngine() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); setGammaStatus('intradayStatus', '🔒 Admin locked — click the 🔒 icon in Settings and enter the password', 'error'); return; }
   if (!gammaRequireSupabase()) { setGammaStatus('intradayStatus', '❌ Supabase not connected — configure Bridge and Security Key in Settings', 'error'); return; }
-  focusLog();
   if (INTRADAY_ENGINE_SQLS.length === 0) {
     log('GammaPace IntraDay: No engine SQLs configured yet. Add them to INTRADAY_ENGINE_SQLS.', 'warn');
     setGammaStatus('intradayStatus', '⚠️ No engine SQLs configured yet (INTRADAY_ENGINE_SQLS is empty)', 'info');
@@ -3404,7 +3401,6 @@ async function gammaIntradayReset() {
 async function executeIntradayReset() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); setGammaStatus('intradayStatus', '🔒 Admin locked — click the 🔒 icon in Settings and enter the password', 'error'); return; }
   if (!gammaRequireSupabase()) { setGammaStatus('intradayStatus', '❌ Supabase not connected — configure Bridge and Security Key in Settings', 'error'); return; }
-  focusLog();
   const { data, error } = await supabaseClient.from('gammapace_intraday').select('*');
   if (error) { log(`GammaPace IntraDay Reset select error: ${error.message}`, 'error'); setGammaStatus('intradayStatus', `❌ Reset failed: ${error.message}${gammaErrorHint(error.message)}`, 'error'); return; }
   if (data && data.length > 0) {
@@ -3426,7 +3422,6 @@ async function executeIntradayReset() {
 async function gammaLongTermRefresh() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); setGammaStatus('longTermStatus', '🔒 Admin locked — click the 🔒 icon in Settings and enter the password', 'error'); return; }
   if (!gammaRequireSupabase()) { setGammaStatus('longTermStatus', '❌ Supabase not connected — configure Bridge and Security Key in Settings', 'error'); return; }
-  focusLog();
   const { data, error } = await supabaseClient.from('gammapace_longterm').select('symbol').order('symbol');
   if (error) { log(`GammaPace LongTerm Refresh error: ${error.message}`, 'error'); setGammaStatus('longTermStatus', `❌ Refresh failed: ${error.message}${gammaErrorHint(error.message)}`, 'error'); return; }
   const symbols = (data || []).map(r => r.symbol);
@@ -3438,7 +3433,6 @@ async function gammaLongTermRefresh() {
 async function gammaLongTermLoad() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); setGammaStatus('longTermStatus', '🔒 Admin locked — click the 🔒 icon in Settings and enter the password', 'error'); return; }
   if (!gammaRequireSupabase()) { setGammaStatus('longTermStatus', '❌ Supabase not connected — configure Bridge and Security Key in Settings', 'error'); return; }
-  focusLog();
   const symbols = parseSymbolList(document.getElementById('longTermSymbols').value);
   if (symbols.length === 0) { log('GammaPace LongTerm: No symbols to load.', 'warn'); setGammaStatus('longTermStatus', '⚠️ No symbols to load — text area is empty', 'info'); return; }
   const now = getUTCTimestamp();
@@ -3452,7 +3446,6 @@ async function gammaLongTermLoad() {
 async function gammaLongTermEngine() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); setGammaStatus('longTermStatus', '🔒 Admin locked — click the 🔒 icon in Settings and enter the password', 'error'); return; }
   if (!gammaRequireSupabase()) { setGammaStatus('longTermStatus', '❌ Supabase not connected — configure Bridge and Security Key in Settings', 'error'); return; }
-  focusLog();
   if (LONGTERM_ENGINE_SQLS.length === 0) {
     log('GammaPace LongTerm: No engine SQLs configured yet. Add them to LONGTERM_ENGINE_SQLS.', 'warn');
     setGammaStatus('longTermStatus', '⚠️ No engine SQLs configured yet (LONGTERM_ENGINE_SQLS is empty)', 'info');
@@ -3481,7 +3474,6 @@ async function gammaLongTermReset() {
 async function executeLongTermReset() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); setGammaStatus('longTermStatus', '🔒 Admin locked — click the 🔒 icon in Settings and enter the password', 'error'); return; }
   if (!gammaRequireSupabase()) { setGammaStatus('longTermStatus', '❌ Supabase not connected — configure Bridge and Security Key in Settings', 'error'); return; }
-  focusLog();
   const { data, error } = await supabaseClient.from('gammapace_longterm').select('*');
   if (error) { log(`GammaPace LongTerm Reset select error: ${error.message}`, 'error'); setGammaStatus('longTermStatus', `❌ Reset failed: ${error.message}${gammaErrorHint(error.message)}`, 'error'); return; }
   if (data && data.length > 0) {
