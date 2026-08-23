@@ -1034,7 +1034,7 @@ const NASDAQ_ENDPOINTS = [
   { id: 'chart', name: 'Chart Data', path: '/api/quote/{symbol}/chart?assetclass=stocks&charttype=rs', description: 'Intraday price chart data for a symbol (updates every minute)', table: 'nasdaq_chart', status: 'active' },
   { id: 'realtime_trades', name: 'Realtime Trades', path: '/api/quote/{symbol}/realtime-trades', description: 'Real-time trade records for a symbol (updates every 30 seconds)', table: 'nasdaq_realtime_trades', status: 'active' },
   { id: 'screener', name: 'Stock Screener', path: '/api/screener/stocks?tableonly=true&limit=500000&exchange=nasdaq', description: 'List all stocks with price, change, market cap — FULL UNIVERSE (one call, no truncation)', table: 'nasdaq_stocks', status: 'active' },
-  { id: 'basic_quotes', name: 'Current Quote (Basic)', path: '/api/quote/basic?&symbol={symbol}|stocks', description: 'Lightweight ticker: price, change, percent change, and delta indicator only', table: 'nasdaq_basic_quotes', status: 'active' },
+  { id: 'basic_quotes', name: 'Current Quote (Basic)', path: '/api/quote/basic?symbol={symbol}|stocks', description: 'Lightweight ticker: price, change, percent change, and delta indicator only', table: 'nasdaq_basic_quotes', status: 'active' },
   { id: 'quotes', name: 'Quote Info', path: '/api/quote/{symbol}/info?assetclass=stocks', description: 'Detailed quote data for individual symbols', table: 'nasdaq_quotes', status: 'active' },
   { id: 'historical', name: 'Historical Prices', path: '/api/quote/{symbol}/historical', description: 'Daily OHLCV price history for a symbol', table: 'nasdaq_historical', status: 'active' },
   { id: 'summary', name: 'Quote Summary', path: '/api/quote/{symbol}/summary?assetclass=stocks', description: 'Key stats: sector, industry, market cap, volume, yield, bid/ask', table: 'nasdaq_summary', status: 'active' },
@@ -1754,25 +1754,40 @@ async function loadScreener() {
 // Current Quote (Basic) Loader
 // ============================================================
 //
-// NASDAQ /api/quote/basic returns a lightweight ticker with only:
-//   symbol, lastSalePrice, netChange, percentageChange, deltaIndicator
+// NASDAQ /api/quote/basic — CURRENT STRUCTURE (v1.0.11, verified 2026-08-23):
+//   {"data":{"date":"Data as of Aug 20, 2026","records":[{
+//     "key":"AAPL|STOCKS","ticker":["AAPL","Apple Inc. Common Stock"],
+//     "lastSale":"$309.35","change":"-1.95","pctChange":"-0.63%",
+//     "deltaIndicator":"down","volume":"46,876,985",
+//     "url":"/market-activity/stocks/aapl","assetclass":"STOCKS"}]},
+//    "message":null,"status":{"rCode":200,"bCodeMessage":null}}
 //
-// Fields removed from mapping (never returned by this endpoint):
+// Field mapping:
+//   symbol            ← records[].ticker[0]  (fallback: key before "|")
+//   last_sale_price   ← records[].lastSale        ($ , stripped)
+//   net_change        ← records[].change          (numeric)
+//   percentage_change ← records[].pctChange       (% sign kept)
+//   delta_indicator   ← records[].deltaIndicator
+//   volume            ← records[].volume          (commas stripped)
+//
+// NOT returned by the current API (columns stay NULL — do NOT drop
+// open/high/low/previous_close: the factual dedupe UNIQUE constraint
+// and upsert conflict key reference them):
+//   open_price, high_price, low_price, previous_close
+//
+// Never returned (use Quote Info / Screener instead):
 //   company_name, stock_type, exchange, market_status,
 //   fifty_two_week_range, last_trade_timestamp
 //
-// Fields kept in mapping (may return during market hours or API updates):
-//   open_price, high_price, low_price, previous_close, volume
+// Invalid/unknown symbol → NASDAQ returns rCode 400 with data:null
+// ("Symbol not exists or bad symbol") — handled gracefully (row skipped).
 //
-// To drop the dead columns from Supabase, run:
-//   ALTER TABLE nasdaq_basic_quotes
-//     DROP COLUMN IF EXISTS company_name,
-//     DROP COLUMN IF EXISTS stock_type,
-//     DROP COLUMN IF EXISTS exchange,
-//     DROP COLUMN IF EXISTS market_status,
-//     DROP COLUMN IF EXISTS fifty_two_week_range,
-//     DROP COLUMN IF EXISTS last_trade_timestamp;
-//   NOTIFY pgrst, 'reload schema';
+// Multi-symbol batching is NOT supported (comma list → rCode 400
+// "Invalid or no asset") — one symbol per request via parallelFetchAll.
+//
+// LEGACY fallback: the pre-v1.0.11 flat shape (data.lastSalePrice /
+// netChange / percentageChange / deltaIndicator) is still accepted
+// defensively in case NASDAQ reverts or serves mixed responses.
 //
 // ============================================================
 
@@ -1806,11 +1821,11 @@ async function loadBasicQuotes() {
       json = await fetchNasdaq(path);
     } catch (e) {
       log(`Basic Quote [${symbol}]: fetch error — ${e.message}`, 'warn');
-      return null;
+      return [];
     }
     if (!json) {
       log(`Basic Quote [${symbol}]: empty response`, 'warn');
-      return null;
+      return [];
     }
 
     // OPTIMIZED (v1.0.6): direct property access on the known response root —
@@ -1820,9 +1835,37 @@ async function loadBasicQuotes() {
     if (!d && Array.isArray(json) && json.length > 0) d = json[0];     // array response
     if (!d || typeof d !== 'object') {
       log(`Basic Quote [${symbol}]: no data in response`, 'warn');
-      return null;
+      return [];
     }
 
+    // ── CURRENT STRUCTURE (v1.0.11): quotes arrive in data.records[] ──
+    if (Array.isArray(d.records)) {
+      const rows = [];
+      for (const rec of d.records) {
+        if (!rec || typeof rec !== 'object') continue;
+        const ticker = Array.isArray(rec.ticker) ? rec.ticker : [];
+        const keySym = typeof rec.key === 'string' ? rec.key.split('|')[0] : undefined;
+        rows.push({
+          symbol: cleanText(ticker[0]) || cleanText(keySym) || symbol,
+          last_sale_price: toPrice(rec.lastSale),
+          net_change: toPrice(rec.change),
+          percentage_change: cleanText(rec.pctChange),
+          delta_indicator: cleanText(rec.deltaIndicator),
+          // Speculative — NOT present in the current API payload; kept in case
+          // NASDAQ re-adds intraday OHLC fields to this endpoint
+          open_price: toPrice(rec.openPrice),
+          high_price: toPrice(rec.highPrice),
+          low_price: toPrice(rec.lowPrice),
+          previous_close: toPrice(rec.previousClose),
+          volume: toBigInt(rec.volume)
+        });
+      }
+      if (rows.length > 0) return rows;
+      log(`Basic Quote [${symbol}]: records array present but empty`, 'warn');
+      return [];
+    }
+
+    // ── LEGACY FLAT STRUCTURE fallback (pre-v1.0.11 shape) ──
     // Light multi-key fallback across direct properties only (no tree scan)
     const f = (...keys) => {
       for (const k of keys) {
@@ -1846,7 +1889,7 @@ async function loadBasicQuotes() {
       volume: toBigInt(f('volume', 'Volume', 'shareVolume', 'totalVolume', 'vol'))
     };
 
-    return result;
+    return [result];
   };
 
   // ── SINGLE SYMBOL MODE ──
@@ -1855,10 +1898,10 @@ async function loadBasicQuotes() {
     const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
     log(`Starting: Current Quote (Basic) for ${symbol}`);
     try {
-      const result = await fetchSymbolBasic(symbol);
-      if (result) {
-        log(`Current Quote (Basic) [${symbol}]: 1 record fetched`, 'success');
-        return [result];
+      const rows = await fetchSymbolBasic(symbol);
+      if (rows.length > 0) {
+        log(`Current Quote (Basic) [${symbol}]: ${rows.length} record(s) fetched`, 'success');
+        return rows;
       }
       return [];
     } catch (err) {
@@ -1895,12 +1938,12 @@ async function loadBasicQuotes() {
   const { successCount, failCount } = await parallelFetchAll(
     symbols,
     async (symbol) => {
-      const result = await fetchSymbolBasic(symbol);
-      if (result) {
-        allRows.push(result);
-        return result;
+      const rows = await fetchSymbolBasic(symbol);
+      if (rows && rows.length > 0) {
+        allRows.push(...rows);
+        return rows;
       }
-      return null;
+      return [];
     },
     {
       concurrency: 10,
