@@ -1762,21 +1762,24 @@ async function loadScreener() {
 //     "url":"/market-activity/stocks/aapl","assetclass":"STOCKS"}]},
 //    "message":null,"status":{"rCode":200,"bCodeMessage":null}}
 //
-// Field mapping:
+// Field mapping (v1.0.12 schema — company/date/url/asset stored, OHLC removed):
 //   symbol            ← records[].ticker[0]  (fallback: key before "|")
+//   company_name      ← records[].ticker[1]       ("Apple Inc. Common Stock")
 //   last_sale_price   ← records[].lastSale        ($ , stripped)
 //   net_change        ← records[].change          (numeric)
 //   percentage_change ← records[].pctChange       (% sign kept)
 //   delta_indicator   ← records[].deltaIndicator
 //   volume            ← records[].volume          (commas stripped)
+//   data_as_of        ← data.date                 ("Data as of Aug 20, 2026")
+//   url               ← records[].url             ("/market-activity/stocks/aapl")
+//   asset_class       ← records[].assetclass      ("STOCKS")
 //
-// NOT returned by the current API (columns stay NULL — do NOT drop
-// open/high/low/previous_close: the factual dedupe UNIQUE constraint
-// and upsert conflict key reference them):
-//   open_price, high_price, low_price, previous_close
+// REMOVED FROM SCHEMA (v1.0.12): open_price, high_price, low_price,
+//   previous_close — never returned by the current API. Migrate an
+//   existing table with supabase_basic_quotes_update.sql.
 //
-// Never returned (use Quote Info / Screener instead):
-//   company_name, stock_type, exchange, market_status,
+// Still not provided by this endpoint (use Quote Info / Screener instead):
+//   stock_type, exchange, market_status,
 //   fifty_two_week_range, last_trade_timestamp
 //
 // Invalid/unknown symbol → NASDAQ returns rCode 400 with data:null
@@ -1847,17 +1850,16 @@ async function loadBasicQuotes() {
         const keySym = typeof rec.key === 'string' ? rec.key.split('|')[0] : undefined;
         rows.push({
           symbol: cleanText(ticker[0]) || cleanText(keySym) || symbol,
+          company_name: cleanText(ticker[1]),
           last_sale_price: toPrice(rec.lastSale),
           net_change: toPrice(rec.change),
           percentage_change: cleanText(rec.pctChange),
           delta_indicator: cleanText(rec.deltaIndicator),
-          // Speculative — NOT present in the current API payload; kept in case
-          // NASDAQ re-adds intraday OHLC fields to this endpoint
-          open_price: toPrice(rec.openPrice),
-          high_price: toPrice(rec.highPrice),
-          low_price: toPrice(rec.lowPrice),
-          previous_close: toPrice(rec.previousClose),
-          volume: toBigInt(rec.volume)
+          volume: toBigInt(rec.volume),
+          // Envelope-level metadata (same for every record in this response)
+          data_as_of: cleanText(d.date),
+          url: cleanText(rec.url),
+          asset_class: cleanText(rec.assetclass)
         });
       }
       if (rows.length > 0) return rows;
@@ -1881,11 +1883,6 @@ async function loadBasicQuotes() {
       net_change: toPrice(f('netChange', 'net_change', 'NetChange', 'change', 'Change', 'netChangePrice')),
       percentage_change: cleanText(f('percentageChange', 'percentage_change', 'PercentageChange', 'percentChange', 'pctChange', 'pctchange', 'changePercent')),
       delta_indicator: cleanText(f('deltaIndicator', 'delta_indicator', 'DeltaIndicator', 'delta', 'Delta')),
-      // Kept — may populate during market hours
-      open_price: toPrice(f('openPrice', 'open', 'Open', 'OPEN')),
-      high_price: toPrice(f('highPrice', 'high', 'High', 'HIGH')),
-      low_price: toPrice(f('lowPrice', 'low', 'Low', 'LOW')),
-      previous_close: toPrice(f('previousClosePrice', 'previousClose', 'prevClose', 'closePrice', 'priorClose')),
       volume: toBigInt(f('volume', 'Volume', 'shareVolume', 'totalVolume', 'vol'))
     };
 
@@ -2961,7 +2958,7 @@ async function insertToSupabase(table, rows) {
   const getConflictKey = () => {
     if (upsertScreener) return 'symbol,last_sale,net_change,pct_change,market_cap';
     if (upsertRealtimeTrades) return 'symbol,nls_volume,previous_close,today_high_low,fifty_two_week_range';
-    if (upsertBasicQuotes) return 'symbol,last_sale_price,net_change,percentage_change,delta_indicator,open_price,high_price,low_price,previous_close,volume';
+    if (upsertBasicQuotes) return 'symbol,last_sale_price,net_change,percentage_change,delta_indicator,volume';
     if (upsertQuotes) return 'symbol,last_sale_price,net_change,percentage_change,volume,market_status,last_trade_timestamp,day_range';
     if (upsertSummary) return 'symbol,one_year_target,today_high_low,share_volume,average_volume,previous_close,fifty_two_week_high_low,market_cap,annualized_dividend,yield,bid_size,ask_size';
     if (upsertHistorical) return 'symbol,date';
