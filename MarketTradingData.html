@@ -1067,6 +1067,7 @@ let optionChainMode = 'single';  // 'all' or 'single'
 let basicQuotesMode = 'single';  // 'all' or 'single'
 let chartMode = 'single';  // 'all' or 'single'
 let realtimeTradesMode = 'single';  // 'all' or 'single'
+let quotesMode = 'single';  // 'all' or 'single'
 let autoReloadEnabled = false;
 let autoReloadTimeout = null;
 let screenerSymbolsCache = null; // Cache NASDAQ symbol list for the session
@@ -1177,6 +1178,13 @@ function selectRealtimeTradesMode(el) {
   // Re-render to update chip styles and symbol input visibility
   discoverAPIs();
   log(`Realtime Trades mode: ${MODE_LABELS[realtimeTradesMode] || realtimeTradesMode}`, 'info');
+}
+
+function selectQuotesMode(el) {
+  quotesMode = el.dataset.mode;
+  // Re-render to update chip styles and symbol input visibility
+  discoverAPIs();
+  log(`Quote Info mode: ${MODE_LABELS[quotesMode] || quotesMode}`, 'info');
 }
 
 function toggleAdminLock() {
@@ -1352,12 +1360,25 @@ function discoverAPIs() {
           onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
       </span>
     ` : '';
+    const quotesInputHtml = api.id === 'quotes' ? `
+      <span class="days-input-wrap" style="margin-left: 12px; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+        <input type="text" id="quotes-symbol" placeholder="SYMBOL" value="AAPL"
+          style="background: #fff; color: #8b4513; border: 2px solid #ddd; border-radius: 8px; padding: 3px 6px; width: 70px; font-size: 0.85rem; text-align: center; outline: none; text-transform: uppercase; display:${quotesMode === 'single' ? 'inline-block' : 'none'};"
+          onfocus="this.style.borderColor='#8b4513'" onblur="this.style.borderColor='#ddd'">
+        <span style="display:inline-flex;gap:4px;align-items:center;margin-left:4px;">
+          <span class="quotes-mode-chip ${quotesMode === 'all' ? 'selected' : ''}" data-mode="all" onclick="selectQuotesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${quotesMode === 'all' ? '#d4af37' : '#fff'};color:${quotesMode === 'all' ? '#fff' : '#8b4513'};">ALL NASDAQ</span>
+          <span class="quotes-mode-chip ${quotesMode === 'single' ? 'selected' : ''}" data-mode="single" onclick="selectQuotesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${quotesMode === 'single' ? '#d4af37' : '#fff'};color:${quotesMode === 'single' ? '#fff' : '#8b4513'};">Single Symbol</span>
+          <span class="quotes-mode-chip ${quotesMode === 'gamma_intraday' ? 'selected' : ''}" data-mode="gamma_intraday" onclick="selectQuotesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${quotesMode === 'gamma_intraday' ? '#d4af37' : '#fff'};color:${quotesMode === 'gamma_intraday' ? '#fff' : '#8b4513'};">Gamma IntraDay</span>
+          <span class="quotes-mode-chip ${quotesMode === 'gamma_longterm' ? 'selected' : ''}" data-mode="gamma_longterm" onclick="selectQuotesMode(this)" style="cursor:pointer;padding:2px 8px;border-radius:6px;font-size:0.75rem;border:1px solid #d4af37;background:${quotesMode === 'gamma_longterm' ? '#d4af37' : '#fff'};color:${quotesMode === 'gamma_longterm' ? '#fff' : '#8b4513'};">Gamma LongTerm</span>
+        </span>
+      </span>
+    ` : '';
 
     item.innerHTML = `
       <div class="api-info">
         <span class="api-method">GET</span>
         <div>
-          <div class="api-name">${api.name}${chartInputHtml}${realtimeTradesInputHtml}${basicQuotesInputHtml}${historicalInputHtml}${summaryInputHtml}${optionChainInputHtml}</div>
+          <div class="api-name">${api.name}${chartInputHtml}${realtimeTradesInputHtml}${basicQuotesInputHtml}${historicalInputHtml}${summaryInputHtml}${optionChainInputHtml}${quotesInputHtml}</div>
           <div class="api-desc">${api.description}</div>
         </div>
       </div>
@@ -1434,22 +1455,50 @@ async function getScreenerSymbols() {
   return screenerSymbolsCache;
 }
 
-// GammaPace watchlist symbol source — reads the public GammaPace_* tables.
-// Used by the "Gamma IntraDay" / "Gamma LongTerm" mode chips on per-symbol endpoints.
+// GammaPace watchlist symbol source — reads the public gammapace_* tables.
+// Used by the "Gamma IntraDay" / "Gamma LongTerm" mode chips on per-symbol endpoints,
+// and by the CSV / Load Data flows to scope fetch + download to the watchlist.
+// v1.0.14: AUTO-INITIALIZES Supabase from Settings when null (parity with
+// gammaRequireSupabase) — resolves former limitation #17, so selecting a Gamma
+// chip and immediately clicking ⬇️ CSV or ▶️ Load Data works standalone.
+// Symbols are unique by PRIMARY KEY, so this satisfies "SELECT DISTINCT symbol".
 async function getGammaPaceSymbols(table) {
   if (!supabaseClient) {
-    log('Supabase not initialized. Configure Bridge and Security Key in Settings.', 'error');
-    document.getElementById('settingsPanel').classList.add('active');
-    return [];
+    const url = document.getElementById('sbUrl')?.value.trim();
+    const key = document.getElementById('sbKey')?.value.trim();
+    if (!(url && key && initSupabase())) {
+      log('Supabase not initialized. Configure Bridge and Security Key in Settings.', 'error');
+      document.getElementById('settingsPanel').classList.add('active');
+      return [];
+    }
   }
   const { data, error } = await supabaseClient.from(table).select('symbol').order('symbol');
   if (error) {
     log(`Failed to fetch symbols from ${table}: ${error.message}`, 'error');
     return [];
   }
-  const symbols = (data || []).map(r => r.symbol).filter(s => s);
+  // DISTINCT safety (v1.0.15): the active tables use symbol as PRIMARY KEY, so
+  // select('symbol') already returns unique symbols (equivalent to
+  // "SELECT DISTINCT symbol"). This JS-level dedupe guarantees DISTINCT even if
+  // a table were ever created without a PK.
+  const symbols = [...new Set((data || []).map(r => r.symbol).filter(s => s))];
   log(`${symbols.length} symbols loaded from ${table}`, 'success');
   return symbols;
+}
+
+// Active mode for an endpoint id — used by the CSV download flow to apply the
+// same Gamma IntraDay / Gamma LongTerm symbol filter that the loaders use.
+function getActiveModeForAPI(apiId) {
+  switch (apiId) {
+    case 'chart': return chartMode;
+    case 'realtime_trades': return realtimeTradesMode;
+    case 'basic_quotes': return basicQuotesMode;
+    case 'quotes': return quotesMode;
+    case 'historical': return historicalMode;
+    case 'summary': return summaryMode;
+    case 'option_chain': return optionChainMode;
+    default: return null; // market_movers / screener have no mode chips
+  }
 }
 
 // Generic parallel fetch worker for ALL-mode endpoints
@@ -1542,7 +1591,13 @@ async function startLoading() {
     const api = NASDAQ_ENDPOINTS.find(a => a.id === apiId);
     if (!api) continue;
     status.textContent = `Loading ${api.name}...`;
-    log(`Starting: ${api.name}`);
+    // v1.0.14: surface the active filter on every cycle (incl. Loop iterations)
+    const loadingMode = getActiveModeForAPI(api.id);
+    if (loadingMode === 'gamma_intraday' || loadingMode === 'gamma_longterm') {
+      log(`Starting: ${api.name} · filter: ${MODE_LABELS[loadingMode]} (symbols from ${loadingMode === 'gamma_intraday' ? 'gammapace_intraday' : 'gammapace_longterm'})`);
+    } else {
+      log(`Starting: ${api.name}`);
+    }
 
     try {
       let data;
@@ -2149,20 +2204,35 @@ async function loadChart() {
 // returns real-time trade records for a symbol. Response shape:
 //   {
 //     "data": {
-//       "symbol": "nvda",
+//       "symbol": "aapl",
 //       "totalRecords": 0,
 //       "rows": [],                    // ← trade records go here during market hours
 //       "topTable": {
+//         "asOf": null,                // ← "Data as of ..." timestamp during market hours
+//         "headers": { ... },
 //         "rows": [{
-//           "nlsVolume": "66,128,534",
-//           "previousClose": "$225.01",
-//           "todayHighLow": "$221.64/$218.6902",
-//           "fiftyTwoWeekHighLow": "$236.54/$164.07"
+//           "nlsVolume": "46,876,985",
+//           "previousClose": "$311.30",
+//           "todayHighLow": "/",
+//           "fiftyTwoWeekHighLow": "$344.5699/$223.7804"
 //         }]
 //       }
 //     },
 //     "message": "Real-Time trades not available"
 //   }
+//
+// ATTRIBUTE ALIGNMENT (v1.0.13) — every meaningful endpoint field maps to a column:
+//   data.symbol                       → symbol
+//   data.rows[].price                 → price            (market hours)
+//   data.rows[].size                  → size             (market hours)
+//   data.rows[].time                  → time_text        (market hours)
+//   data.topTable.nlsVolume           → nls_volume
+//   data.topTable.previousClose       → previous_close
+//   data.topTable.todayHighLow        → today_high_low
+//   data.topTable.fiftyTwoWeekHighLow → fifty_two_week_range
+//   data.topTable.asOf                → as_of            (NEW v1.0.13; NULL outside market hours)
+// Envelope chrome (totalRecords/offset/limit/headers/description/message) is
+// UI metadata and intentionally NOT stored.
 //
 // Unique constraint (v1.0.5): UNIQUE NULLS NOT DISTINCT
 //   (symbol, nls_volume, previous_close, today_high_low, fifty_two_week_range)
@@ -2253,6 +2323,7 @@ async function loadRealtimeTrades() {
     const previousClose = toPrice(topRow.previousClose);
     const todayHighLow = cleanText(topRow.todayHighLow);
     const fiftyTwoWeekRange = cleanText(topRow.fiftyTwoWeekHighLow);
+    const asOf = cleanText(d.topTable?.asOf);
 
     const sym = symbol.toString().toUpperCase();
     const result = [];
@@ -2270,7 +2341,8 @@ async function loadRealtimeTrades() {
         nls_volume: nlsVolume,
         previous_close: previousClose,
         today_high_low: todayHighLow,
-        fifty_two_week_range: fiftyTwoWeekRange
+        fifty_two_week_range: fiftyTwoWeekRange,
+        as_of: asOf
       });
       return result;
     }
@@ -2288,7 +2360,8 @@ async function loadRealtimeTrades() {
         nls_volume: nlsVolume,
         previous_close: previousClose,
         today_high_low: todayHighLow,
-        fifty_two_week_range: fiftyTwoWeekRange
+        fifty_two_week_range: fiftyTwoWeekRange,
+        as_of: asOf
       });
     }
 
@@ -2364,53 +2437,29 @@ async function loadRealtimeTrades() {
   return allRows;
 }
 
+// ============================================================
+// Quote Info Loader (v1.0.15 — 4-mode support)
+// ============================================================
+//
+// NASDAQ /api/quote/{symbol}/info?assetclass=stocks
+// returns detailed quote data for a single symbol.
+//
+// v1.0.15: Added the full 4-mode system (ALL NASDAQ / Single Symbol /
+// Gamma IntraDay / Gamma LongTerm) matching the other per-symbol endpoints.
+//   - Single:        fetch one symbol from the #quotes-symbol input (default AAPL)
+//   - ALL:           fetch all symbols via getScreenerSymbols()
+//   - Gamma IntraDay: fetch only symbols in gammapace_intraday
+//   - Gamma LongTerm: fetch only symbols in gammapace_longterm
+// The legacy resume/localStorage + nasdaq_stocks-sourced symbol logic is
+// preserved ONLY for the ALL mode path (it was the historical behavior).
+// ============================================================
+
 async function loadQuotes() {
   const loadDate = getUSLoadDate();
   log(`Starting Quote Info load (Load Date: ${getUSLoadDateDisplay()})`);
   setProgress(5, 'Fetching quotes...');
 
   if (!supabaseClient) { log('Supabase not initialized', 'err'); return []; }
-
-  const resumeKey = `quote_resume_${loadDate}_${selectedExchange}`;
-  const resumeEl = document.getElementById('resumeQuotes');
-  const resumeEnabled = resumeEl ? resumeEl.checked : true;
-  let resumeIndex = 0;
-
-  if (resumeEnabled) {
-    const saved = localStorage.getItem(resumeKey);
-    if (saved) {
-      const data = JSON.parse(saved);
-      if (data.exchange === selectedExchange && data.loadDate === loadDate) {
-        resumeIndex = data.index || 0;
-        if (resumeIndex > 0) log(`Resuming quotes from symbol #${resumeIndex + 1}...`, 'info');
-      }
-    }
-  }
-
-  // Get symbols from already-loaded nasdaq_stocks for today
-  let query = supabaseClient.from('nasdaq_stocks').select('symbol').eq('load_date', loadDate).order('market_cap', { ascending: false });
-  if (selectedExchange) query = query.eq('exchange', selectedExchange);
-  const { data: symbolRows, error } = await query;
-  if (error || !symbolRows || symbolRows.length === 0) { log('No symbols found in nasdaq_stocks for today. Run Stock Screener first.', 'warn'); return []; }
-
-  // Multi-load history: nasdaq_stocks may hold several same-day snapshots,
-  // so dedupe to unique symbols (first occurrence — keeps market_cap order).
-  const seen = new Set();
-  let symbols = [];
-  for (const row of symbolRows) {
-    if (!seen.has(row.symbol)) {
-      seen.add(row.symbol);
-      symbols.push(row.symbol);
-    }
-  }
-  const totalAvailable = symbols.length;
-  if (quoteCount !== 'ALL') symbols = symbols.slice(0, parseInt(quoteCount));
-  if (resumeIndex > 0 && resumeIndex < symbols.length) symbols = symbols.slice(resumeIndex);
-  else resumeIndex = 0;
-
-  log(`Fetching quotes for ${symbols.length} symbols (total: ${totalAvailable}, start: #${resumeIndex + 1}) · 5 concurrent · 80ms gap`);
-  const quotes = [];
-  const startTime = Date.now();
 
   const fetchQuote = async (sym) => {
     let retries = 0;
@@ -2448,45 +2497,153 @@ async function loadQuotes() {
     return null;
   };
 
-  const CONCURRENCY = 5;
-  const DELAY_MS = 80;
-
-  for (let i = 0; i < symbols.length; i += CONCURRENCY) {
-    if (cancelRequested) {
-      log(`Cancel received. Saved progress at symbol #${resumeIndex + i + 1}.`, 'warn');
-      if (resumeEnabled) localStorage.setItem(resumeKey, JSON.stringify({ exchange: selectedExchange, loadDate, index: resumeIndex + i }));
-      break;
-    }
-
-    const batch = symbols.slice(i, i + CONCURRENCY);
-    const batchResults = await Promise.allSettled(batch.map(sym => fetchQuote(sym)));
-
-    batchResults.forEach((res) => {
-      if (res.status === 'fulfilled' && res.value) {
-        quotes.push(res.value);
+  // ── SINGLE SYMBOL MODE ──
+  if (quotesMode === 'single') {
+    const symbolInput = document.getElementById('quotes-symbol');
+    const symbol = (symbolInput?.value || 'AAPL').toString().trim().toUpperCase();
+    log(`Starting: Quote Info for ${symbol}`);
+    try {
+      const result = await fetchQuote(symbol);
+      if (result) {
+        log(`Quote Info [${symbol}]: 1 record fetched`, 'success');
+        return [result];
       }
-    });
-
-    const overallIndex = resumeIndex + Math.min(i + CONCURRENCY, symbols.length);
-    const pct = Math.round((overallIndex / totalAvailable) * 100);
-    const elapsed = Math.round((Date.now() - startTime) / 1000);
-    const rate = elapsed > 0 ? (overallIndex / elapsed).toFixed(1) : 0;
-    setProgress(pct, `Quote ${overallIndex}/${totalAvailable} · ${rate}/s · ${quotes.length} fetched`);
-
-    if (resumeEnabled && (i + CONCURRENCY) % 20 === 0) {
-      localStorage.setItem(resumeKey, JSON.stringify({ exchange: selectedExchange, loadDate, index: overallIndex }));
-    }
-
-    if (i + CONCURRENCY < symbols.length && !cancelRequested) {
-      await new Promise(r => setTimeout(r, DELAY_MS));
+      return [];
+    } catch (err) {
+      log(`Quote Info [${symbol}]: ${err.message}`, 'error');
+      return [];
     }
   }
 
-  if (!cancelRequested && resumeEnabled) {
-    localStorage.removeItem(resumeKey);
-    log('Quote loading complete. Resume progress cleared.', 'success');
+  // ── BULK MODES: ALL NASDAQ / Gamma IntraDay / Gamma LongTerm ──
+  let symbols = [];
+  let modeLabel = 'ALL NASDAQ';
+  if (quotesMode === 'gamma_intraday') {
+    modeLabel = 'GammaPace IntraDay';
+    try { symbols = await getGammaPaceSymbols('gammapace_intraday'); }
+    catch (e) { log(`Quote Info: Failed to fetch GammaPace IntraDay symbols — ${e.message}`, 'error'); return []; }
+  } else if (quotesMode === 'gamma_longterm') {
+    modeLabel = 'GammaPace LongTerm';
+    try { symbols = await getGammaPaceSymbols('gammapace_longterm'); }
+    catch (e) { log(`Quote Info: Failed to fetch GammaPace LongTerm symbols — ${e.message}`, 'error'); return []; }
+  } else {
+    // ALL NASDAQ — legacy behavior: source symbols from today's nasdaq_stocks
+    // (market_cap order, deduped) with resume support.
+    const resumeKey = `quote_resume_${loadDate}_${selectedExchange}`;
+    const resumeEl = document.getElementById('resumeQuotes');
+    const resumeEnabled = resumeEl ? resumeEl.checked : true;
+    let resumeIndex = 0;
+
+    if (resumeEnabled) {
+      const saved = localStorage.getItem(resumeKey);
+      if (saved) {
+        try {
+          const data = JSON.parse(saved);
+          if (data.exchange === selectedExchange && data.loadDate === loadDate) {
+            resumeIndex = data.index || 0;
+            if (resumeIndex > 0) log(`Resuming quotes from symbol #${resumeIndex + 1}...`, 'info');
+          }
+        } catch (e) { /* ignore corrupt resume state */ }
+      }
+    }
+
+    // Get symbols from already-loaded nasdaq_stocks for today
+    let query = supabaseClient.from('nasdaq_stocks').select('symbol').eq('load_date', loadDate).order('market_cap', { ascending: false });
+    if (selectedExchange) query = query.eq('exchange', selectedExchange);
+    const { data: symbolRows, error } = await query;
+    if (error || !symbolRows || symbolRows.length === 0) { log('No symbols found in nasdaq_stocks for today. Run Stock Screener first.', 'warn'); return []; }
+
+    // Multi-load history: nasdaq_stocks may hold several same-day snapshots,
+    // so dedupe to unique symbols (first occurrence — keeps market_cap order).
+    const seen = new Set();
+    for (const row of symbolRows) {
+      if (!seen.has(row.symbol)) {
+        seen.add(row.symbol);
+        symbols.push(row.symbol);
+      }
+    }
+    const totalAvailable = symbols.length;
+    if (quoteCount !== 'ALL') symbols = symbols.slice(0, parseInt(quoteCount));
+    if (resumeIndex > 0 && resumeIndex < symbols.length) symbols = symbols.slice(resumeIndex);
+    else resumeIndex = 0;
+
+    log(`Fetching quotes for ${symbols.length} symbols (total: ${totalAvailable}, start: #${resumeIndex + 1}) · 5 concurrent · 80ms gap`);
+    const quotes = [];
+    const startTime = Date.now();
+
+    const CONCURRENCY = 5;
+    const DELAY_MS = 80;
+
+    for (let i = 0; i < symbols.length; i += CONCURRENCY) {
+      if (cancelRequested) {
+        log(`Cancel received. Saved progress at symbol #${resumeIndex + i + 1}.`, 'warn');
+        if (resumeEnabled) localStorage.setItem(resumeKey, JSON.stringify({ exchange: selectedExchange, loadDate, index: resumeIndex + i }));
+        break;
+      }
+
+      const batch = symbols.slice(i, i + CONCURRENCY);
+      const batchResults = await Promise.allSettled(batch.map(sym => fetchQuote(sym)));
+
+      batchResults.forEach((res) => {
+        if (res.status === 'fulfilled' && res.value) {
+          quotes.push(res.value);
+        }
+      });
+
+      const overallIndex = resumeIndex + Math.min(i + CONCURRENCY, symbols.length);
+      const pct = Math.round((overallIndex / totalAvailable) * 100);
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      const rate = elapsed > 0 ? (overallIndex / elapsed).toFixed(1) : 0;
+      setProgress(pct, `Quote ${overallIndex}/${totalAvailable} · ${rate}/s · ${quotes.length} fetched`);
+
+      if (resumeEnabled && (i + CONCURRENCY) % 20 === 0) {
+        localStorage.setItem(resumeKey, JSON.stringify({ exchange: selectedExchange, loadDate, index: overallIndex }));
+      }
+
+      if (i + CONCURRENCY < symbols.length && !cancelRequested) {
+        await new Promise(r => setTimeout(r, DELAY_MS));
+      }
+    }
+
+    if (!cancelRequested && resumeEnabled) {
+      localStorage.removeItem(resumeKey);
+      log('Quote loading complete. Resume progress cleared.', 'success');
+    }
+    return quotes;
   }
-  return quotes;
+
+  if (symbols.length === 0) {
+    log(`Quote Info: No symbols found for ${modeLabel}`, 'warn');
+    return [];
+  }
+
+  log(`Starting: Quote Info for ${symbols.length} ${modeLabel} symbols · 5 concurrent · 80ms gap`);
+
+  const allRows = [];
+
+  const { successCount, failCount } = await parallelFetchAll(
+    symbols,
+    async (symbol) => {
+      const result = await fetchQuote(symbol);
+      if (result) {
+        allRows.push(result);
+        return result;
+      }
+      return null;
+    },
+    {
+      concurrency: 5,
+      delayMs: 80,
+      label: 'Quote Info',
+      onProgress: (processed, total, ok, fail) => {
+        const pct = Math.round((processed / total) * 100);
+        setProgress(pct, `Quote Info ${processed}/${total} · ${allRows.length} rows · ${ok} ok`);
+      }
+    }
+  );
+
+  log(`Quote Info: ${allRows.length} rows from ${successCount} symbols (${failCount} failed)`);
+  return allRows;
 }
 
 // ============================================================
@@ -3178,14 +3335,27 @@ async function fetchAndUpsertAPI(api) {
   return data;
 }
 
-async function downloadTableAsCSV(tableName, loadDate) {
+async function downloadTableAsCSV(tableName, loadDate, symbolFilter = null) {
   if (!supabaseClient) {
     log('Supabase not initialized', 'error');
     return;
   }
 
+  // Optional watchlist scoping (v1.0.14): when a Gamma IntraDay / Gamma LongTerm
+  // mode is active, restrict the download to exactly those symbols so the CSV
+  // matches what was fetched — never mixes in earlier ALL-NASDAQ rows.
+  let query = supabaseClient.from(tableName).select('*').eq('load_date', loadDate);
+  if (Array.isArray(symbolFilter)) {
+    if (symbolFilter.length === 0) {
+      log(`${tableName}: watchlist is empty — nothing to download`, 'warn');
+      return;
+    }
+    query = query.in('symbol', symbolFilter);
+    log(`Download filter: ${symbolFilter.length} watchlist symbol(s) applied to ${tableName}`, 'info');
+  }
+
   log(`Querying ${tableName} for ${loadDate}...`);
-  const { data, error } = await supabaseClient.from(tableName).select('*').eq('load_date', loadDate);
+  const { data, error } = await query;
   if (error) {
     log(`Error querying ${tableName}: ${error.message}`, 'error');
     return;
@@ -3242,6 +3412,26 @@ async function downloadAPI(apiId) {
   const api = NASDAQ_ENDPOINTS.find(a => a.id === apiId);
   if (!api) return;
 
+  // Resolve the active Gamma watchlist filter for THIS endpoint (v1.0.14).
+  // When a Gamma IntraDay / Gamma LongTerm chip is selected, BOTH the fetch
+  // (via the loader's mode variable) and the CSV download are scoped to the
+  // watchlist symbols from gammapace_intraday / gammapace_longterm.
+  let symbolFilter = null;
+  const activeMode = getActiveModeForAPI(api.id);
+  if (activeMode === 'gamma_intraday' || activeMode === 'gamma_longterm') {
+    const watchTable = activeMode === 'gamma_intraday' ? 'gammapace_intraday' : 'gammapace_longterm';
+    try {
+      symbolFilter = await getGammaPaceSymbols(watchTable);
+      log(`${api.name}: ${MODE_LABELS[activeMode]} filter — ${symbolFilter.length} symbol(s) from ${watchTable}`, 'info');
+      if (symbolFilter.length === 0) {
+        log(`Add tickers in the GammaPace ${activeMode === 'gamma_intraday' ? 'IntraDay' : 'LongTerm'} panel first (💾 Add), then retry.`, 'warn');
+      }
+    } catch (e) {
+      log(`Failed to resolve ${MODE_LABELS[activeMode]} watchlist: ${e.message}`, 'error');
+      symbolFilter = [];
+    }
+  }
+
   isLoading = true;
   cancelRequested = false;
 
@@ -3275,7 +3465,7 @@ async function downloadAPI(apiId) {
       fill.style.width = pct + '%';
       percent.textContent = pct + '%';
       status.textContent = `Downloading ${tableName}...`;
-      await downloadTableAsCSV(tableName, loadDate);
+      await downloadTableAsCSV(tableName, loadDate, symbolFilter);
     }
 
     fill.style.width = '100%';
