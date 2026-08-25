@@ -3600,28 +3600,64 @@ async function gammaIntradayLoad() {
   setGammaStatus('intradayStatus', `✅ Table updated — ${symbols.length} symbol(s) upserted to gammapace_intraday (UTC ${now})`, 'success');
 }
 
+// ⚙️ Gamma_engine (v1.0.17): fetches the engine SQL from gammapace_internal_mapping
+// and executes it, then reloads the watchlist into the text area like 🔄 Active does.
+const INTRADAY_ENGINE_SQL_SOURCE = {
+  table: 'gammapace_internal_mapping',
+  title: 'Gamma_engine in Intraday symbols list update from SQL_Anlysis',
+  sno: 4
+};
+
 async function gammaIntradayEngine() {
   if (!isAdminUnlocked) { log('Admin lock engaged. Unlock in Settings to use GammaPace.', 'warn'); setGammaStatus('intradayStatus', '🔒 Admin locked — click the 🔒 icon in Settings and enter the password', 'error'); return; }
   if (!gammaRequireSupabase()) { setGammaStatus('intradayStatus', '❌ Supabase not connected — configure Bridge and Security Key in Settings', 'error'); return; }
-  if (INTRADAY_ENGINE_SQLS.length === 0) {
-    log('GammaPace IntraDay: No engine SQLs configured yet. Add them to INTRADAY_ENGINE_SQLS.', 'warn');
-    setGammaStatus('intradayStatus', '⚠️ No engine SQLs configured yet (INTRADAY_ENGINE_SQLS is empty)', 'info');
+
+  // Step 1 — read the engine SQL from the mapping table
+  setGammaStatus('intradayStatus', '⚙️ Fetching Gamma engine SQL from gammapace_internal_mapping...', 'info');
+  const { data: sqlRows, error: sqlError } = await supabaseClient
+    .from(INTRADAY_ENGINE_SQL_SOURCE.table)
+    .select('sql')
+    .eq('title', INTRADAY_ENGINE_SQL_SOURCE.title)
+    .eq('sno', INTRADAY_ENGINE_SQL_SOURCE.sno)
+    .limit(1);
+  if (sqlError) { log(`GammaPace IntraDay Engine mapping error: ${sqlError.message}`, 'error'); setGammaStatus('intradayStatus', `❌ Engine SQL lookup failed: ${sqlError.message}${gammaErrorHint(sqlError.message)}`, 'error'); return; }
+  const sqlText = sqlRows && sqlRows[0] && sqlRows[0].sql ? sqlRows[0].sql.trim() : null;
+  if (!sqlText) {
+    log(`GammaPace IntraDay Engine: no SQL found for "${INTRADAY_ENGINE_SQL_SOURCE.title}" (sno=${INTRADAY_ENGINE_SQL_SOURCE.sno})`, 'warn');
+    setGammaStatus('intradayStatus', `⚠️ No engine SQL found in ${INTRADAY_ENGINE_SQL_SOURCE.table} for that title/sno`, 'info');
     return;
   }
-  log(`GammaPace IntraDay: Executing ${INTRADAY_ENGINE_SQLS.length} engine SQL(s)...`, 'info');
-  setGammaStatus('intradayStatus', `⚙️ Running ${INTRADAY_ENGINE_SQLS.length} engine SQL(s)...`, 'info');
-  let okCount = 0;
-  for (const sql of INTRADAY_ENGINE_SQLS) {
-    try {
-      const { error } = await supabaseClient.rpc(sql);
-      if (error) { log(`GammaPace IntraDay engine [${sql}]: ${error.message}`, 'error'); }
-      else { okCount++; log(`GammaPace IntraDay engine [${sql}]: OK`, 'success'); }
-    } catch (e) {
-      log(`GammaPace IntraDay engine [${sql}]: ${e.message}`, 'error');
-    }
+  log(`GammaPace IntraDay Engine: executing SQL (${sqlText.length} chars) from ${INTRADAY_ENGINE_SQL_SOURCE.table} [sno=${INTRADAY_ENGINE_SQL_SOURCE.sno}]...`, 'info');
+  setGammaStatus('intradayStatus', '⚙️ Executing Gamma engine SQL...', 'info');
+
+  // Step 2 — execute it via the execute_dynamic_sql Postgres function (run supabase_gamma_engine.sql once)
+  let execResult = null;
+  try {
+    const { data, error } = await supabaseClient.rpc('execute_dynamic_sql', { query: sqlText });
+    if (error) throw error;
+    execResult = typeof data === 'string' ? data : 'OK';
+  } catch (execError) {
+    log(`GammaPace IntraDay Engine execution error: ${execError.message}`, 'error');
+    const hint = /PGRST202|Could not find the function|schema cache/i.test(execError.message)
+      ? ' · Hint: run supabase_gamma_engine.sql once in the Supabase SQL Editor to create execute_dynamic_sql()'
+      : '';
+    setGammaStatus('intradayStatus', `❌ Engine SQL execution failed: ${execError.message}${hint || gammaErrorHint(execError.message)}`, 'error');
+    return;
   }
-  log('GammaPace IntraDay: Engine run complete.', 'success');
-  setGammaStatus('intradayStatus', `✅ Gamma engine retrieved/executed — ${okCount}/${INTRADAY_ENGINE_SQLS.length} SQL(s) OK`, okCount === INTRADAY_ENGINE_SQLS.length ? 'success' : 'error');
+  if (execResult && /^ERROR/i.test(execResult)) {
+    log(`GammaPace IntraDay Engine SQL failed inside Postgres: ${execResult}`, 'error');
+    setGammaStatus('intradayStatus', `❌ Engine SQL failed: ${execResult}`, 'error');
+    return;
+  }
+  log('GammaPace IntraDay Engine: SQL executed successfully.', 'success');
+
+  // Step 3 — populate the text area with the resulting symbols from gammapace_intraday
+  const { data: symRows, error: symError } = await supabaseClient.from('gammapace_intraday').select('symbol').order('symbol');
+  if (symError) { log(`GammaPace IntraDay Engine refresh error: ${symError.message}`, 'error'); setGammaStatus('intradayStatus', `✅ SQL executed, but symbol refresh failed: ${symError.message}${gammaErrorHint(symError.message)}`, 'error'); return; }
+  const symbols = (symRows || []).map(r => r.symbol);
+  document.getElementById('intradaySymbols').value = symbols.join(', ');
+  log(`GammaPace IntraDay Engine: ${symbols.length} symbol(s) loaded into text area`, 'success');
+  setGammaStatus('intradayStatus', `✅ Gamma engine executed — symbols list updated — ${symbols.length} symbol(s) pulled from gammapace_intraday`, 'success');
 }
 
 async function gammaIntradayReset() {
